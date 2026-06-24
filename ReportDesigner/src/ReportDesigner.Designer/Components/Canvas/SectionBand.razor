@@ -1,0 +1,171 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+
+<div class="rd-section @(IsSelected ? "rd-section--selected" : "") rd-section--@Section.Type.ToString().ToLower()"
+     id="section-@Section.Name"
+     style="height:@(HeightPx.ToString("F1"))px; position:relative;"
+     @onclick="OnSectionClick" @onclick:stopPropagation="true"
+     @oncontextmenu="OnSectionContextMenu" @oncontextmenu:preventDefault="true"
+     @ondragover="OnDragOver" @ondragover:preventDefault="true"
+     @ondrop="OnDrop">
+
+    <!-- Section label -->
+    <div class="rd-section__label">
+        <span class="rd-section__type">@SectionLabel</span>
+        @if (!string.IsNullOrWhiteSpace(Section.GroupField))
+        {
+            <span class="rd-section__group"> [group: @Section.GroupField]</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Section.DataSourceName))
+        {
+            <span class="rd-section__ds"> [@Section.DataSourceName]</span>
+        }
+        <span class="rd-section__height"> @Section.Height.ToString("F0")pt</span>
+    </div>
+
+    <!-- Background colour swatch if set -->
+    @if (!string.IsNullOrWhiteSpace(Section.BackColor))
+    {
+        <div class="rd-section__bg" style="background:@Section.BackColor; opacity:0.25;
+        position:absolute;inset:0;pointer-events:none;"></div>
+    }
+
+    <!-- Field elements -->
+    @foreach (var field in Section.Fields)
+    {
+        <FieldBox Section="Section" Field="field" Scale="Scale" />
+    }
+
+    <!-- Section resize handle (bottom edge) -->
+    <div class="rd-section__resize-handle"
+         @onmousedown="OnResizeMouseDown"
+         @onmousedown:stopPropagation="true"
+         title="Drag to resize section height">
+        <span>⋯</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+    [Parameter, EditorRequired] public float PrintableWidth { get; set; }
+
+    // Scale used for field box CSS positions (pre-transform, inside CSS scale container)
+    private float Scale    => State.PtToPx / State.Zoom;
+    private float HeightPx => Section.Height * Scale;
+    private bool IsSelected => State.Selection.Section == Section && !State.Selection.HasField;
+
+    private string SectionLabel => Section.Type switch
+    {
+        SectionType.ReportHeader => "Report Header",
+        SectionType.PageHeader => "Page Header",
+        SectionType.GroupHeader => "Group Header",
+        SectionType.Detail => "Detail",
+        SectionType.GroupFooter => "Group Footer",
+        SectionType.PageFooter => "Page Footer",
+        SectionType.ReportFooter => "Report Footer",
+        _ => Section.Type.ToString()
+    };
+
+    // ── Click selects the section ─────────────────────────────────────
+    // FieldBox uses @onclick:stopPropagation so field clicks never reach here.
+
+    private void OnSectionClick(MouseEventArgs e)
+    {
+        State.HideContextMenu();
+        State.SelectSection(Section);
+    }
+
+    private void OnSectionContextMenu(MouseEventArgs e)
+    {
+        State.SelectSection(Section);
+        State.ShowContextMenu(e.ClientX, e.ClientY, section: Section, field: null);
+    }
+
+    // ── Resize handle ─────────────────────────────────────────────────
+
+    private double _resizeStartY;
+    private float _resizeStartH;
+
+    private void OnResizeMouseDown(MouseEventArgs e)
+    {
+        _resizeStartY = (float)e.ClientY;
+        _resizeStartH = Section.Height;
+        UndoRedo.Push("Resize section");
+        State.Drag.Mode          = DragMode.ResizeSection;
+        State.Drag.TargetSection = Section;
+        State.Drag.OffsetY       = (float)e.ClientY;
+        State.Drag.OrigHeight    = Section.Height;
+    }
+
+    // ── Drag-over / drop (from field palette) ─────────────────────────
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        e.DataTransfer.DropEffect = "copy";
+    }
+
+    private void OnDrop(DragEventArgs e)
+    {
+        var drag = State.Drag;
+
+        if (drag.Mode == DragMode.PaletteField && drag.PaletteFieldName is not null)
+        {
+            float xPt = (float)e.OffsetX / Scale;
+            float yPt = (float)e.OffsetY / Scale;
+
+            UndoRedo.Push("Drop field");
+
+            if (drag.PaletteShapeKind is { } shapeKind)
+            {
+                State.AddShapeElement(Section, xPt, yPt, shapeKind);
+            }
+            else if (drag.PaletteChartKind is { } chartKind)
+            {
+                State.AddChartElement(Section, xPt, yPt, chartKind);
+            }
+            else if (drag.PaletteIsCustomFormula)
+            {
+                State.AddCustomFieldElement(Section, xPt, yPt);
+            }
+            else
+            {
+                State.AddField(Section, xPt, yPt,
+                    fieldName: drag.PaletteFieldName,
+                    expression: drag.TargetField?.Expression);
+            }
+
+            drag.Reset();
+        }
+        else if (drag.Mode == DragMode.MoveField
+              && drag.TargetField is not null
+              && drag.TargetSection is not null)
+        {
+            // e.ClientX/Y are viewport pixels. PtToPx = Zoom * 1.333 converts viewport px → points.
+            float ptToPx = State.PtToPx;
+            float clientDeltaXPt = ((float)e.ClientX - drag.DragStartClientX) / ptToPx;
+            float clientDeltaYPt = ((float)e.ClientY - drag.DragStartClientY) / ptToPx;
+
+            if (drag.OrigPositions.Count > 1)
+            {
+                foreach (var (field, (origX, origY)) in drag.OrigPositions)
+                {
+                    field.X = State.Snap(origX + clientDeltaXPt);
+                    field.Y = State.Snap(origY + clientDeltaYPt);
+                }
+                State.NotifyChanged();
+            }
+            else
+            {
+                if (drag.TargetSection != Section)
+                {
+                    drag.TargetSection.Fields.Remove(drag.TargetField);
+                    Section.Fields.Add(drag.TargetField);
+                }
+                float newX = drag.OrigX + clientDeltaXPt;
+                float newY = drag.OrigY + clientDeltaYPt;
+                State.MoveField(Section, drag.TargetField, newX, newY);
+            }
+            drag.Reset();
+        }
+    }
+}

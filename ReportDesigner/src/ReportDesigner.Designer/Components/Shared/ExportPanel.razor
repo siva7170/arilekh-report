@@ -1,0 +1,100 @@
+@inject DesignerStateService State
+@inject PreviewService Preview
+@inject JsInterop JsInterop
+
+<div class="rd-toolbar__group">
+    <span class="rd-toolbar__label">Export:</span>
+
+    <button class="rd-btn" title="Export to PDF (browser print dialog)" @onclick="ExportPdf" disabled="@_busy">
+        @if (_busy && _current == "pdf") { <span class="rd-spinner-sm"></span> }
+        else { <span>📄</span> }
+        PDF
+    </button>
+
+    <div class="rd-btn-split" title="Excel export">
+        <button class="rd-btn" @onclick="ExportExcel" disabled="@_busy">
+            @if (_busy && _current == "xlsx") { <span class="rd-spinner-sm"></span> }
+            else { <span>📊</span> }
+            Excel
+        </button>
+        <button class="rd-btn rd-btn--xs" title="@(_excelDataMode ? "Data mode (flat table)" : "Layout mode (visual)")"
+                @onclick="() => _excelDataMode = !_excelDataMode"
+                style="padding:0 4px;font-size:9px;">
+            @(_excelDataMode ? "Data" : "Layout")
+        </button>
+    </div>
+
+    <button class="rd-btn" title="Export to HTML" @onclick="ExportHtml" disabled="@_busy">
+        @if (_busy && _current == "html") { <span class="rd-spinner-sm"></span> }
+        else { <span>🌐</span> }
+        HTML
+    </button>
+</div>
+
+@code {
+    private bool   _busy;
+    private string _current       = string.Empty;
+    private bool   _excelDataMode = false;
+
+    private async Task ExportPdf()
+    {
+        await RunExport("pdf", async () =>
+        {
+            var html = await Preview.RenderPreviewAsync();
+            await JsInterop.PrintHtmlAsPdfAsync(html);
+        });
+    }
+
+    private async Task ExportExcel()
+    {
+        await RunExport("xlsx", async () =>
+        {
+            var options  = new ExcelExportOptions { DataSheetMode = _excelDataMode };
+            var bytes    = await Preview.ExportExcelAsync(options);
+            var name     = string.IsNullOrWhiteSpace(State.Report.Name) ? "report" : State.Report.Name;
+            await DownloadBytes(name + ".xlsx", bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        });
+    }
+
+    private async Task ExportHtml()
+    {
+        await RunExport("html", async () =>
+        {
+            var html  = await Preview.RenderPreviewAsync();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(html);
+            var name  = string.IsNullOrWhiteSpace(State.Report.Name) ? "report" : State.Report.Name;
+            await DownloadBytes(name + ".html", bytes, "text/html");
+        });
+    }
+
+    private async Task RunExport(string type, Func<Task> action)
+    {
+        if (_busy) return;
+        _busy    = true;
+        _current = type;
+        StateHasChanged();
+
+        try
+        {
+            await action();
+            State.ShowToast($"{type.ToUpper()} exported", ToastType.Success);
+        }
+        catch (Exception ex)
+        {
+            State.ShowToast($"Export failed: {ex.Message}", ToastType.Error);
+        }
+        finally
+        {
+            _busy    = false;
+            _current = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadBytes(string fileName, byte[] bytes, string mimeType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JsInterop.DownloadBase64Async(fileName, base64, mimeType);
+    }
+}

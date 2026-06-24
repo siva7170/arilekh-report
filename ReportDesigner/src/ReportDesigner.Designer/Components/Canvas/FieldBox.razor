@@ -1,0 +1,479 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@inject ClipboardService Clipboard
+@inject JsInterop JsInterop
+
+<div class="rd-field-box @(IsSelected ? "rd-field-box--selected" : "") @(IsMultiSelected && !IsSelected ? "rd-field-box--multi" : "") rd-field-box--@Field.Kind.ToString().ToLower()"
+     id="field-@Field.Name"
+     draggable="true"
+     style="@BoxStyle"
+     @onclick="OnClick" @onclick:stopPropagation="true"
+     @ondragstart="OnDragStart"
+     @oncontextmenu="OnContextMenu" @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true">
+
+    <!-- Content: shape-aware rendering -->
+    @if (Field.Kind == ElementKind.Line)
+    {
+        <svg width="100%" height="100%" style="display:block;overflow:visible">
+            @if (Field.Height <= Field.Width)
+            {
+                <!-- Horizontal line -->
+                <line x1="0" y1="50%" x2="100%" y2="50%"
+                      stroke="@(Field.StrokeColor ?? "#000000")"
+                      stroke-width="@((Field.StrokeWidth * Scale).ToString("F1"))" />
+            }
+            else
+            {
+                <!-- Vertical line -->
+                <line x1="50%" y1="0" x2="50%" y2="100%"
+                      stroke="@(Field.StrokeColor ?? "#000000")"
+                      stroke-width="@((Field.StrokeWidth * Scale).ToString("F1"))" />
+            }
+        </svg>
+    }
+    else if (Field.Kind == ElementKind.Box)
+    {
+        var sw = Field.StrokeWidth * Scale;
+        <svg width="100%" height="100%" style="display:block">
+            <rect x="@(sw/2)" y="@(sw/2)"
+                  width="@($"calc(100% - {sw}px)")" height="@($"calc(100% - {sw}px)")"
+                  rx="@(Field.BorderRadius)%" ry="@(Field.BorderRadius)%"
+                  fill="@(Field.FillColor ?? "none")"
+                  stroke="@(Field.StrokeColor ?? "#000000")"
+                  stroke-width="@(sw.ToString("F1"))" />
+        </svg>
+    }
+    else if (Field.Kind == ElementKind.Circle)
+    {
+        var sw = Field.StrokeWidth * Scale;
+        <svg width="100%" height="100%" style="display:block">
+            <ellipse cx="50%" cy="50%"
+                     rx="@($"calc(50% - {sw/2}px)")" ry="@($"calc(50% - {sw/2}px)")"
+                     fill="@(Field.FillColor ?? "none")"
+                     stroke="@(Field.StrokeColor ?? "#000000")"
+                     stroke-width="@(sw.ToString("F1"))" />
+        </svg>
+    }
+    else if (Field.Kind == ElementKind.Image)
+    {
+        @if (!string.IsNullOrWhiteSpace(Field.ImageSrc))
+        {
+            <img src="@Field.ImageSrc"
+                 style="width:100%;height:100%;object-fit:@Field.ImageStretch;display:block;pointer-events:none;"
+                 alt="@Field.Name" />
+        }
+        else
+        {
+            <div class="rd-field-box__img-placeholder">
+                <span>🖼</span><span>Image</span>
+            </div>
+        }
+    }
+    else if (Field.Kind == ElementKind.Chart)
+    {
+        <div class="rd-field-box__chart-preview">
+            @RenderChartPreview()
+        </div>
+    }
+    else if (Field.Kind == ElementKind.CustomFormula)
+    {
+        <div class="rd-field-box__custom-formula">
+            <span class="rd-field-box__custom-formula-icon">Fx</span>
+            <span class="rd-field-box__text" style="@TextStyle">
+                @(string.IsNullOrWhiteSpace(Field.CustomFormula?.Formula) ? "[formula]" : Field.CustomFormula!.Formula)
+            </span>
+        </div>
+    }
+    else
+    {
+        <span class="rd-field-box__text" style="@TextStyle">
+            @DisplayText
+        </span>
+    }
+
+    <!-- Resize handle – right edge -->
+    <div class="rd-field-box__resize rd-field-box__resize--right"
+         title="Drag to resize width"
+         draggable="true"
+         @ondragstart:preventDefault="true"
+         @ondragstart:stopPropagation="true"
+         @onmousedown="OnResizeRightDown" @onmousedown:stopPropagation="true">
+    </div>
+
+    <!-- Resize handle – bottom edge -->
+    <div class="rd-field-box__resize rd-field-box__resize--bottom"
+         title="Drag to resize height"
+         draggable="true"
+         @ondragstart:preventDefault="true"
+         @ondragstart:stopPropagation="true"
+         @onmousedown="OnResizeBottomDown" @onmousedown:stopPropagation="true">
+    </div>
+
+    <!-- Context menu – rendered in DesignerPage to avoid overflow:hidden clipping -->
+    @* Context menu state is managed by DesignerPage via State.ContextMenu *@
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement       Field   { get; set; } = default!;
+    [Parameter, EditorRequired] public float              Scale   { get; set; } = 1.333f;
+
+    private bool IsSelected      => State.Selection.Field == Field;
+    private bool IsMultiSelected => State.Selection.IsFieldSelected(Field);
+
+    private void OnClick(MouseEventArgs e)
+    {
+        State.HideContextMenu();
+        if (e.CtrlKey)
+            State.ToggleFieldSelection(Section, Field);
+        else
+            State.SelectField(Section, Field);
+    }
+
+    // ── Display text ──────────────────────────────────────────────────
+
+    private string DisplayText
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Field.Text)) return Field.Text;
+            if (!string.IsNullOrWhiteSpace(Field.Expression))
+            {
+                // Show a friendly version of the expression
+                var expr = Field.Expression;
+                if (expr.StartsWith("Fields.", StringComparison.OrdinalIgnoreCase))
+                    return "[" + expr[7..] + "]";
+                if (expr.EndsWith("()"))
+                    return "{" + expr + "}";
+                return "=" + expr;
+            }
+            return Field.Name;
+        }
+    }
+
+    // ── Styles ────────────────────────────────────────────────────────
+
+    private string BoxStyle
+    {
+        get
+        {
+            var s = Field.Style;
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"left:{(Field.X * Scale).ToString("F1")}px;");
+            sb.Append($"top:{(Field.Y * Scale).ToString("F1")}px;");
+            sb.Append($"width:{(Field.Width * Scale).ToString("F1")}px;");
+            sb.Append($"height:{(Field.Height * Scale).ToString("F1")}px;");
+            if (Field.Rotation != 0f)
+                sb.Append($"transform:rotate({Field.Rotation.ToString("F1")}deg);transform-origin:center center;");
+            if (Field.Kind == ElementKind.Field || Field.Kind == ElementKind.Image)
+            {
+                if (s?.BackColor is { } bg) sb.Append($"background:{bg};");
+                if (s?.Border != BorderSides.None && s?.Border is not null)
+                    sb.Append($"border:1px solid {s.BorderColor ?? "#999"};");
+            }
+            return sb.ToString();
+        }
+    }
+
+    private string TextStyle
+    {
+        get
+        {
+            var s = Field.Style;
+            var sb = new System.Text.StringBuilder();
+            // Horizontal alignment
+            var align = Field.Alignment switch
+            {
+                FieldAlignment.Center => "center",
+                FieldAlignment.Right  => "right",
+                _                     => "left",
+            };
+            sb.Append($"text-align:{align};");
+            // Vertical alignment via flex
+            var vAlign = Field.VerticalAlign switch
+            {
+                FieldVerticalAlign.Middle => "center",
+                FieldVerticalAlign.Bottom => "flex-end",
+                _                         => "flex-start",
+            };
+            sb.Append($"display:flex;flex-direction:column;justify-content:{vAlign};height:100%;");
+            if (s?.FontFamily is { } ff) sb.Append($"font-family:{ff};");
+            if (s?.FontSize   is { } fs) sb.Append($"font-size:{(fs * Scale).ToString("F1")}px;");
+            if (s?.ForeColor  is { } fc) sb.Append($"color:{fc};");
+            if (s?.Bold     == true) sb.Append("font-weight:700;");
+            if (s?.Italic   == true) sb.Append("font-style:italic;");
+            if (s?.Underline == true) sb.Append("text-decoration:underline;");
+            return sb.ToString();
+        }
+    }
+
+    // ── Drag start (native HTML5 drag) ────────────────────────────────
+
+    private void OnDragStart(DragEventArgs e)
+    {
+        State.Drag.Mode             = DragMode.MoveField;
+        State.Drag.TargetSection    = Section;
+        State.Drag.TargetField      = Field;
+        State.Drag.OffsetX          = (float)e.OffsetX / Scale;
+        State.Drag.OffsetY          = (float)e.OffsetY / Scale;
+        State.Drag.OrigX            = Field.X;
+        State.Drag.OrigY            = Field.Y;
+        State.Drag.DragStartClientX = (float)e.ClientX;
+        State.Drag.DragStartClientY = (float)e.ClientY;
+
+        // Ensure the dragged field is in the selection
+        if (e.CtrlKey)
+            State.ToggleFieldSelection(Section, Field);
+        else if (!State.Selection.IsFieldSelected(Field))
+            State.SelectField(Section, Field);
+
+        // Snapshot original positions of ALL selected fields for multi-drag
+        State.Drag.OrigPositions.Clear();
+        foreach (var f in State.Selection.SelectedFields)
+            State.Drag.OrigPositions[f] = (f.X, f.Y);
+
+        UndoRedo.Push(State.Selection.SelectedFields.Count > 1 ? "Move fields" : "Move field");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JsInterop.AttachScaledDragImageAsync($"field-{Field.Name}");
+    }
+
+    // ── Chart preview ─────────────────────────────────────────────────
+
+    private RenderFragment RenderChartPreview() => builder =>
+    {
+        var chart = Field.Chart;
+        if (chart is null) { builder.AddContent(0, "[chart]"); return; }
+
+        float w = Field.Width  * Scale;
+        float h = Field.Height * Scale;
+
+        // palette of default colors
+        var defaultColors = new[] { "#4472C4","#ED7D31","#A9D18E","#FF0000","#FFC000","#5B9BD5","#70AD47","#7030A0" };
+
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "width",  w.ToString("F0"));
+        builder.AddAttribute(2, "height", h.ToString("F0"));
+        builder.AddAttribute(3, "style",  "display:block;overflow:hidden;");
+
+        // Border
+        if (chart.ShowBorder)
+        {
+            builder.OpenElement(10, "rect");
+            builder.AddAttribute(11, "x", "0.5"); builder.AddAttribute(12, "y", "0.5");
+            builder.AddAttribute(13, "width",  (w - 1).ToString("F0"));
+            builder.AddAttribute(14, "height", (h - 1).ToString("F0"));
+            builder.AddAttribute(15, "fill",   chart.BackgroundColor ?? "none");
+            builder.AddAttribute(16, "stroke", chart.BorderColor);
+            builder.AddAttribute(17, "stroke-width", chart.BorderWidth.ToString("F1"));
+            builder.CloseElement();
+        }
+
+        // Title
+        float topY = 4f;
+        if (!string.IsNullOrWhiteSpace(chart.Title))
+        {
+            builder.OpenElement(20, "text");
+            builder.AddAttribute(21, "x", (w / 2).ToString("F0"));
+            builder.AddAttribute(22, "y", "12");
+            builder.AddAttribute(23, "text-anchor", "middle");
+            builder.AddAttribute(24, "font-size", "9");
+            builder.AddAttribute(25, "font-weight", "bold");
+            builder.AddAttribute(26, "fill", "#333");
+            builder.AddContent(27, chart.Title);
+            builder.CloseElement();
+            topY = 16f;
+        }
+
+        float pad   = 8f;
+        float legH  = chart.ShowLegend && chart.Series.Count > 0 ? 12f : 0f;
+        float chartH = h - topY - pad - legH;
+        float chartW = w - pad * 2;
+
+        int seriesCount = Math.Max(1, chart.Series.Count);
+
+        if (chart.Type == ChartType.Pie)
+        {
+            // Simple pie — divide 360° equally across series
+            float cx = w / 2f;
+            float cy = topY + chartH / 2f;
+            float r  = Math.Min(chartW, chartH) / 2f - 2f;
+            float startAngle = -90f;
+
+            for (int i = 0; i < seriesCount; i++)
+            {
+                var s = i < chart.Series.Count ? chart.Series[i] : null;
+                float sweep = 360f / seriesCount;
+                float endAngle = startAngle + sweep;
+                float start = startAngle * MathF.PI / 180f;
+                float end   = endAngle   * MathF.PI / 180f;
+                float x1 = cx + r * MathF.Cos(start);
+                float y1 = cy + r * MathF.Sin(start);
+                float x2 = cx + r * MathF.Cos(end);
+                float y2 = cy + r * MathF.Sin(end);
+                int largeArc = sweep > 180 ? 1 : 0;
+                string color = s?.Color ?? defaultColors[i % defaultColors.Length];
+                string d = $"M {cx:F1},{cy:F1} L {x1:F1},{y1:F1} A {r:F1},{r:F1} 0 {largeArc} 1 {x2:F1},{y2:F1} Z";
+
+                builder.OpenElement(100 + i * 10, "path");
+                builder.AddAttribute(101 + i * 10, "d", d);
+                builder.AddAttribute(102 + i * 10, "fill", color);
+                builder.AddAttribute(103 + i * 10, "stroke", "#fff");
+                builder.AddAttribute(104 + i * 10, "stroke-width", "1");
+                builder.CloseElement();
+                startAngle = endAngle;
+            }
+        }
+        else if (chart.Type == ChartType.Bar || chart.Type == ChartType.BarHorizontal)
+        {
+            bool horiz = chart.Type == ChartType.BarHorizontal;
+            float barGap  = 3f;
+            float barW    = horiz
+                ? (chartH - barGap * (seriesCount + 1)) / seriesCount
+                : (chartW - barGap * (seriesCount + 1)) / seriesCount;
+            barW = Math.Max(4f, barW);
+
+            for (int i = 0; i < seriesCount; i++)
+            {
+                var s     = i < chart.Series.Count ? chart.Series[i] : null;
+                string color = s?.Color ?? defaultColors[i % defaultColors.Length];
+                float frac = 0.4f + (i % 3) * 0.2f; // fake heights for preview
+
+                float bx, by, bw, bh;
+                if (horiz)
+                {
+                    bh = barW;
+                    bw = chartW * frac;
+                    bx = pad;
+                    by = topY + pad + i * (barW + barGap);
+                }
+                else
+                {
+                    bw = barW;
+                    bh = chartH * frac;
+                    bx = pad + i * (barW + barGap);
+                    by = topY + chartH - bh;
+                }
+
+                builder.OpenElement(200 + i * 10, "rect");
+                builder.AddAttribute(201 + i * 10, "x",      bx.ToString("F1"));
+                builder.AddAttribute(202 + i * 10, "y",      by.ToString("F1"));
+                builder.AddAttribute(203 + i * 10, "width",  bw.ToString("F1"));
+                builder.AddAttribute(204 + i * 10, "height", bh.ToString("F1"));
+                builder.AddAttribute(205 + i * 10, "fill",   color);
+                builder.CloseElement();
+            }
+        }
+        else if (chart.Type == ChartType.Line)
+        {
+            var fakePts = new[] { 0.6f, 0.3f, 0.8f, 0.5f, 0.9f, 0.4f };
+            float ptSpacing = chartW / (fakePts.Length - 1);
+
+            for (int i = 0; i < seriesCount; i++)
+            {
+                var s     = i < chart.Series.Count ? chart.Series[i] : null;
+                string color = s?.Color ?? defaultColors[i % defaultColors.Length];
+                float offset = i * 0.1f;
+
+                var pts = new System.Text.StringBuilder();
+                for (int p = 0; p < fakePts.Length; p++)
+                {
+                    float px = pad + p * ptSpacing;
+                    float py = topY + chartH - (fakePts[p] - offset) * chartH;
+                    py = Math.Clamp(py, topY, topY + chartH);
+                    pts.Append($"{px:F1},{py:F1} ");
+                }
+
+                builder.OpenElement(300 + i * 10, "polyline");
+                builder.AddAttribute(301 + i * 10, "points", pts.ToString().Trim());
+                builder.AddAttribute(302 + i * 10, "fill",   "none");
+                builder.AddAttribute(303 + i * 10, "stroke", color);
+                builder.AddAttribute(304 + i * 10, "stroke-width", "2");
+                builder.CloseElement();
+            }
+        }
+
+        // Legend
+        if (chart.ShowLegend && chart.Series.Count > 0)
+        {
+            float legY = h - legH + 2f;
+            float legX = pad;
+            for (int i = 0; i < chart.Series.Count && i < 6; i++)
+            {
+                string color = chart.Series[i].Color ?? defaultColors[i % defaultColors.Length];
+                string label = chart.Series[i].Label;
+
+                builder.OpenElement(400 + i * 20, "rect");
+                builder.AddAttribute(401 + i * 20, "x",      legX.ToString("F1"));
+                builder.AddAttribute(402 + i * 20, "y",      legY.ToString("F1"));
+                builder.AddAttribute(403 + i * 20, "width",  "7"); builder.AddAttribute(404 + i * 20, "height", "7");
+                builder.AddAttribute(405 + i * 20, "fill",   color);
+                builder.CloseElement();
+
+                builder.OpenElement(410 + i * 20, "text");
+                builder.AddAttribute(411 + i * 20, "x",         (legX + 9).ToString("F1"));
+                builder.AddAttribute(412 + i * 20, "y",         (legY + 7).ToString("F1"));
+                builder.AddAttribute(413 + i * 20, "font-size", "7");
+                builder.AddAttribute(414 + i * 20, "fill",      "#333");
+                builder.AddContent(415 + i * 20, label);
+                builder.CloseElement();
+
+                legX += Math.Max(30f, label.Length * 5f + 12f);
+                if (legX > w - 30) break;
+            }
+        }
+
+        builder.CloseElement(); // svg
+    };
+
+    // ── Resize ────────────────────────────────────────────────────────
+
+    private double _resizeStartX;
+    private double _resizeStartY;
+    private float  _resizeOrigW;
+    private float  _resizeOrigH;
+    private ResizeHandle _resizeHandle = ResizeHandle.None;
+
+    private void OnResizeRightDown(MouseEventArgs e)
+    {
+        _resizeHandle  = ResizeHandle.Right;
+        _resizeStartX  = e.ClientX;
+        _resizeOrigW   = Field.Width;
+        UndoRedo.Push("Resize field");
+        State.Drag.Mode          = DragMode.ResizeField;
+        State.Drag.TargetField   = Field;
+        State.Drag.TargetSection = Section;
+        State.Drag.OffsetX       = (float)e.ClientX;
+        State.Drag.OffsetY       = (float)e.ClientY;
+        State.Drag.OrigWidth     = Field.Width;
+        State.Drag.OrigHeight    = Field.Height;
+        State.Drag.ActiveHandle  = ResizeHandle.Right;
+    }
+
+    private void OnResizeBottomDown(MouseEventArgs e)
+    {
+        _resizeHandle  = ResizeHandle.Bottom;
+        _resizeStartY  = e.ClientY;
+        _resizeOrigH   = Field.Height;
+        UndoRedo.Push("Resize field");
+        State.Drag.Mode          = DragMode.ResizeField;
+        State.Drag.TargetField   = Field;
+        State.Drag.TargetSection = Section;
+        State.Drag.OffsetX       = (float)e.ClientX;
+        State.Drag.OffsetY       = (float)e.ClientY;
+        State.Drag.OrigWidth     = Field.Width;
+        State.Drag.OrigHeight    = Field.Height;
+        State.Drag.ActiveHandle  = ResizeHandle.Bottom;
+    }
+
+    // ── Context menu ──────────────────────────────────────────────────
+
+    private void OnContextMenu(MouseEventArgs e)
+    {
+        State.SelectField(Section, Field);
+        State.ShowContextMenu(e.ClientX, e.ClientY, section: Section, field: Field);
+    }
+}

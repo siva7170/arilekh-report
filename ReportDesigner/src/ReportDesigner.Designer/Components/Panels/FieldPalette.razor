@@ -1,0 +1,168 @@
+@inject DesignerStateService State
+@implements IDisposable
+
+<div class="rd-palette">
+
+    <!-- Search -->
+    <div class="rd-palette__search">
+        <input class="rd-input rd-input--sm" placeholder="Search fields & elements…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+
+    <!-- Data Fields -->
+    <div class="rd-palette__group-header @(_sections.Contains("fields") ? "" : "collapsed")"
+         @onclick='() => ToggleSection("fields")'>
+        <span class="rd-palette__group-arrow">@(_sections.Contains("fields") ? "▾" : "▸")</span>
+        <span>Data Fields</span>
+        <span class="rd-palette__group-count">@FilteredDataItems.Count()</span>
+    </div>
+    @if (_sections.Contains("fields"))
+    {
+        @if (!FilteredDataItems.Any())
+        {
+            <div class="rd-palette__empty">
+                Use <strong>Schema</strong> button or the <strong>Sources</strong> tab to define fields.
+            </div>
+        }
+        else
+        {
+            @foreach (var item in FilteredDataItems)
+            {
+                <div class="rd-palette__item"
+                     draggable="true"
+                     title="@item.Expression"
+                     @ondragstart="() => OnPaletteDragStart(item)">
+                    <span class="rd-palette__icon">@item.Icon</span>
+                    <span class="rd-palette__name">@item.Label</span>
+                    <span class="rd-palette__type">@item.DataType</span>
+                </div>
+            }
+        }
+    }
+
+    <!-- Charts & Formulas -->
+    <div class="rd-palette__group-header @(_sections.Contains("charts") ? "" : "collapsed")"
+         @onclick='() => ToggleSection("charts")'>
+        <span class="rd-palette__group-arrow">@(_sections.Contains("charts") ? "▾" : "▸")</span>
+        <span>Charts &amp; Formulas</span>
+    </div>
+    @if (_sections.Contains("charts"))
+    {
+        @foreach (var item in State.GetChartItems().Where(i => string.IsNullOrWhiteSpace(_search) || i.Label.Contains(_search, StringComparison.OrdinalIgnoreCase)))
+        {
+            <div class="rd-palette__item rd-palette__item--chart"
+                 draggable="true"
+                 title="Drag to add @item.Label"
+                 @ondragstart="() => OnPaletteDragStart(item)">
+                <span class="rd-palette__icon rd-palette__icon--chart">@item.Icon</span>
+                <span class="rd-palette__name">@item.Label</span>
+            </div>
+        }
+    }
+
+    <!-- Shapes -->
+    <div class="rd-palette__group-header @(_sections.Contains("shapes") ? "" : "collapsed")"
+         @onclick='() => ToggleSection("shapes")'>
+        <span class="rd-palette__group-arrow">@(_sections.Contains("shapes") ? "▾" : "▸")</span>
+        <span>Shapes</span>
+    </div>
+    @if (_sections.Contains("shapes"))
+    {
+        @foreach (var item in State.GetShapeItems().Where(i => string.IsNullOrWhiteSpace(_search) || i.Label.Contains(_search, StringComparison.OrdinalIgnoreCase)))
+        {
+            <div class="rd-palette__item rd-palette__item--shape"
+                 draggable="true"
+                 title="Drag to add @item.Label"
+                 @ondragstart="() => OnPaletteDragStart(item)">
+                <span class="rd-palette__icon rd-palette__icon--shape rd-palette__icon--shape-@item.Name.ToLower()">@item.Icon</span>
+                <span class="rd-palette__name">@item.Label</span>
+            </div>
+        }
+    }
+
+    <!-- Special Fields -->
+    <div class="rd-palette__group-header @(_sections.Contains("special") ? "" : "collapsed")"
+         @onclick='() => ToggleSection("special")'>
+        <span class="rd-palette__group-arrow">@(_sections.Contains("special") ? "▾" : "▸")</span>
+        <span>Special Fields</span>
+    </div>
+    @if (_sections.Contains("special"))
+    {
+        @foreach (var item in FilteredSpecialItems)
+        {
+            <div class="rd-palette__item rd-palette__item--special"
+                 draggable="true"
+                 title="@item.Expression"
+                 @ondragstart="() => OnPaletteDragStart(item)">
+                <span class="rd-palette__icon">@item.Icon</span>
+                <span class="rd-palette__name">@item.Label</span>
+            </div>
+        }
+    }
+
+    <!-- Functions -->
+    <div class="rd-palette__group-header @(_sections.Contains("functions") ? "" : "collapsed")"
+         @onclick='() => ToggleSection("functions")'>
+        <span class="rd-palette__group-arrow">@(_sections.Contains("functions") ? "▾" : "▸")</span>
+        <span>Functions</span>
+    </div>
+    @if (_sections.Contains("functions"))
+    {
+        @foreach (var item in FilteredFunctionItems)
+        {
+            <div class="rd-palette__item rd-palette__item--function"
+                 draggable="true"
+                 title="@item.Expression"
+                 @ondragstart="() => OnPaletteDragStart(item)">
+                <span class="rd-palette__icon rd-palette__icon--fn">@item.Icon</span>
+                <span class="rd-palette__name">@item.Label</span>
+            </div>
+        }
+    }
+
+</div>
+
+@code {
+    private string _search = string.Empty;
+
+    // Track which sections are expanded
+    private readonly HashSet<string> _sections = new() { "fields", "charts", "shapes", "special" };
+
+    private void ToggleSection(string name)
+    {
+        if (!_sections.Add(name)) _sections.Remove(name);
+    }
+
+    private IEnumerable<PaletteItem> FilteredDataItems =>
+        State.GetPaletteItems()
+             .Where(i => string.IsNullOrWhiteSpace(_search) ||
+                         i.Label.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<PaletteItem> FilteredSpecialItems =>
+        State.GetSpecialItems()
+             .Where(i => string.IsNullOrWhiteSpace(_search) ||
+                         i.Label.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<PaletteItem> FilteredFunctionItems =>
+        State.GetFunctionItems()
+             .Where(i => string.IsNullOrWhiteSpace(_search) ||
+                         i.Label.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private void OnPaletteDragStart(PaletteItem item)
+    {
+        State.Drag.Mode                   = DragMode.PaletteField;
+        State.Drag.PaletteFieldName       = item.Name;
+        State.Drag.PaletteShapeKind       = item.ShapeKind;
+        State.Drag.PaletteChartKind       = item.ChartKind;
+        State.Drag.PaletteIsCustomFormula = item.IsCustomFormula;
+        State.Drag.TargetField = new FieldElement
+        {
+            Name       = item.Name,
+            Expression = item.Expression,
+        };
+    }
+
+    protected override void OnInitialized()  => State.OnChanged += Refresh;
+    private void Refresh() => StateHasChanged();
+    public void Dispose()  => State.OnChanged -= Refresh;
+}

@@ -1,0 +1,244 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+
+@* Shown when a CustomFormula-kind FieldElement is selected *@
+
+@{
+    var cf = Field.CustomFormula ??= new CustomFieldDefinition();
+    var allFields   = State.Schema?.Fields ?? new();
+    var allCustom   = State.Report.Sections
+                          .SelectMany(s => s.Fields)
+                          .Where(f => f.Kind == ElementKind.CustomFormula && f.Name != Field.Name)
+                          .ToList();
+}
+
+<div class="rd-props__section">
+    <div class="rd-props__title">Custom Formula: <strong>@Field.Name</strong></div>
+
+    <!-- ── Position & Size ──────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Position &amp; Size</div>
+    <PropRow Label="X (pt)">
+        <NumInput Value="Field.X" ValueChanged="v => Change(() => Field.X = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Y (pt)">
+        <NumInput Value="Field.Y" ValueChanged="v => Change(() => Field.Y = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Width (pt)">
+        <NumInput Value="Field.Width" ValueChanged="v => Change(() => Field.Width = Math.Max(10, v))" Step="1" Min="10" />
+    </PropRow>
+    <PropRow Label="Height (pt)">
+        <NumInput Value="Field.Height" ValueChanged="v => Change(() => Field.Height = Math.Max(8, v))" Step="1" Min="8" />
+    </PropRow>
+
+    <!-- ── Formula Editor ───────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Formula</div>
+
+    <!-- Formula text area -->
+    <div class="rd-formula-editor">
+        <textarea class="rd-formula-editor__input"
+                  rows="3"
+                  value="@cf.Formula"
+                  @onchange="OnFormulaChange"
+                  placeholder="e.g. (Fields.Price * Fields.Qty) - Fields.Discount"
+                  spellcheck="false"></textarea>
+    </div>
+
+    <!-- Operator buttons -->
+    <div class="rd-formula-editor__ops">
+        @foreach (var op in new[] { "+", "-", "*", "/", "(", ")", "." })
+        {
+            <button class="rd-btn rd-btn--sm rd-formula-editor__op"
+                    title="Insert @op"
+                    @onclick="() => InsertToken(op)">@op</button>
+        }
+    </div>
+
+    <!-- Data field picker -->
+    @if (allFields.Count > 0)
+    {
+        <div class="rd-props__group-title" style="margin-top:6px">Insert Field</div>
+        <div class="rd-formula-editor__field-list">
+            @foreach (var f in allFields)
+            {
+                <button class="rd-btn rd-btn--sm rd-formula-editor__field-btn"
+                        title="Insert Fields.@f.Name"
+                        @onclick="() => InsertFieldToken(f.Name)">
+                    @f.Name
+                </button>
+            }
+        </div>
+    }
+
+    <!-- Running total / special tokens -->
+    <div class="rd-props__group-title" style="margin-top:6px">Special Values</div>
+    <div class="rd-formula-editor__field-list">
+        @foreach (var fn in new[] { "RunningTotal()", "PageNumber()", "RowNumber()", "Today()" })
+        {
+            <button class="rd-btn rd-btn--sm rd-formula-editor__field-btn rd-formula-editor__field-btn--special"
+                    title="Insert @fn"
+                    @onclick="() => InsertToken(fn)">@fn</button>
+        }
+        @foreach (var fn in new[] { "SUM(\"\")", "COUNT(\"\")", "AVG(\"\")", "MIN(\"\")", "MAX(\"\")", "IIF(,,)", "ISNULL(,\"\")", "ROUND(,2)" })
+        {
+            <button class="rd-btn rd-btn--sm rd-formula-editor__field-btn rd-formula-editor__field-btn--fn"
+                    title="Insert @fn"
+                    @onclick="() => InsertToken(fn)">@fn</button>
+        }
+    </div>
+
+    <!-- Other custom formula outputs (previous calc results) -->
+    @if (allCustom.Count > 0)
+    {
+        <div class="rd-props__group-title" style="margin-top:6px">Previous Custom Fields</div>
+        <div class="rd-formula-editor__field-list">
+            @foreach (var c in allCustom)
+            {
+                <button class="rd-btn rd-btn--sm rd-formula-editor__field-btn rd-formula-editor__field-btn--custom"
+                        title="Reference @c.Name output"
+                        @onclick="() => InsertCustomToken(c.Name)">@c.Name</button>
+            }
+        </div>
+    }
+
+    <!-- ── Options ──────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title" style="margin-top:6px">Options</div>
+    <PropRow Label="Running total">
+        <input type="checkbox" checked="@cf.IsRunningTotal"
+               @onchange="OnRunningTotalChange" />
+    </PropRow>
+    @if (cf.IsRunningTotal)
+    {
+        <PropRow Label="Reset on group">
+            <input class="rd-input rd-input--full"
+                   value="@cf.ResetOnGroup"
+                   @onchange="e => Change(() => cf.ResetOnGroup = e.Value?.ToString())"
+                   placeholder="group field name" />
+        </PropRow>
+    }
+
+    <!-- ── Format ───────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Format</div>
+    <PropRow Label="Format">
+        <select class="rd-select" value="@Field.Format"
+                @onchange="e => Change(() => Field.Format = Enum.Parse<FieldFormat>(e.Value!.ToString()!))">
+            @foreach (var f in Enum.GetValues<FieldFormat>())
+            {
+                <option value="@f">@f</option>
+            }
+        </select>
+    </PropRow>
+    @if (Field.Format == FieldFormat.Custom)
+    {
+        <PropRow Label="Format string">
+            <input class="rd-input rd-input--full"
+                   value="@Field.FormatString"
+                   @onchange="e => Change(() => Field.FormatString = e.Value?.ToString())"
+                   placeholder="e.g. N2, #,##0.00" />
+        </PropRow>
+    }
+    <PropRow Label="Alignment">
+        <div class="rd-btn-group">
+            @foreach (var a in Enum.GetValues<FieldAlignment>())
+            {
+                <button class="rd-btn rd-btn--sm @(Field.Alignment == a ? "active" : "")"
+                        @onclick="() => Change(() => Field.Alignment = a)">
+                    @AlignIcon(a)
+                </button>
+            }
+        </div>
+    </PropRow>
+
+    <!-- ── Style ────────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Style</div>
+    <PropRow Label="Font size (pt)">
+        <NumInput Value="@(Field.Style?.FontSize ?? 9f)"
+                  ValueChanged="v => ChangeStyle(s => s.FontSize = v)"
+                  Step="0.5f" Min="4" />
+    </PropRow>
+    <PropRow Label="Style">
+        <div class="rd-btn-group">
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Bold==true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Bold = !s.Bold)"><b>B</b></button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Italic==true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Italic = !s.Italic)"><i>I</i></button>
+        </div>
+    </PropRow>
+    <PropRow Label="Fore color">
+        <input type="color"
+               value="@(Field.Style?.ForeColor ?? "#000000")"
+               class="rd-color-picker"
+               @onchange="e => ChangeStyle(s => s.ForeColor = e.Value?.ToString())" />
+    </PropRow>
+
+    <!-- Suppress -->
+    <div class="rd-props__group-title">Behaviour</div>
+    <PropRow Label="Suppress when">
+        <input class="rd-input rd-input--full"
+               value="@Field.SuppressExpression"
+               @onchange="e => Change(() => Field.SuppressExpression = e.Value?.ToString())"
+               placeholder="Fields.Qty == 0" />
+    </PropRow>
+
+    <!-- Delete -->
+    <div class="rd-props__footer">
+        <button class="rd-btn rd-btn--danger rd-btn--full" @onclick="DeleteField">🗑 Delete Formula Field</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement       Field   { get; set; } = default!;
+
+    private void OnFormulaChange(ChangeEventArgs e)
+    {
+        var cf = Field.CustomFormula ??= new CustomFieldDefinition();
+        Change(() => cf.Formula = e.Value?.ToString() ?? string.Empty);
+    }
+
+    private void InsertFieldToken(string fieldName) => InsertToken($"Fields.{fieldName}");
+
+    private void InsertCustomToken(string customName) => InsertToken($"Custom.{customName}");
+
+    private void OnRunningTotalChange(ChangeEventArgs e)
+    {
+        var cf = Field.CustomFormula!;
+        Change(() => cf.IsRunningTotal = (bool)e.Value!);
+    }
+
+    private void Change(Action action)
+    {
+        UndoRedo.Push("Edit formula");
+        action();
+        State.NotifyChanged();
+    }
+
+    private void ChangeStyle(Action<FieldStyle> action)
+    {
+        UndoRedo.Push("Edit formula style");
+        Field.Style ??= new FieldStyle();
+        action(Field.Style);
+        State.NotifyChanged();
+    }
+
+    private void InsertToken(string token)
+    {
+        var cf = Field.CustomFormula ??= new CustomFieldDefinition();
+        Change(() => cf.Formula = string.IsNullOrEmpty(cf.Formula)
+            ? token
+            : cf.Formula + " " + token);
+    }
+
+    private void DeleteField()
+    {
+        UndoRedo.Push("Delete formula field");
+        State.DeleteField(Section, Field);
+    }
+
+    private static string AlignIcon(FieldAlignment a) => a switch
+    {
+        FieldAlignment.Left   => "⬤|  ",
+        FieldAlignment.Center => " ⬤ ",
+        FieldAlignment.Right  => "  |⬤",
+        _ => a.ToString()
+    };
+}

@@ -1,0 +1,55 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@implements IDisposable
+
+<div class="rd-props">
+    <div class="rd-panel__header">⚙️ Properties</div>
+
+    @if (State.Selection.IsMultiSelect)
+    {
+        <div class="rd-props__section">
+            <div class="rd-props__title">Multi-Selection</div>
+            <div style="font-size:10px;color:var(--rd-text-muted);padding:8px 0;">
+                <strong>@State.Selection.SelectedFields.Count</strong> fields selected.<br/>
+                Use arrow keys or drag to move all together.<br/>
+                Ctrl+Click to add/remove from selection.<br/>
+                Click empty area to deselect all.
+            </div>
+        </div>
+    }
+    else if (State.Selection.HasField)
+    {
+        var field = State.Selection.Field!;
+        var section = State.Selection.Section!;
+
+        @if (field.Kind == ElementKind.Chart)
+        {
+            <ChartProperties Section="section" Field="field" />
+        }
+        else if (field.Kind == ElementKind.CustomFormula)
+        {
+            <CustomFormulaEditor Section="section" Field="field" />
+        }
+        else
+        {
+            <FieldProperties Section="section" Field="field" />
+        }
+    }
+    else if (State.Selection.HasSection)
+    {
+        <SectionProperties Section="State.Selection.Section!" />
+    }
+    else
+    {
+        <ReportProperties />
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+        => State.OnChanged += Refresh;
+
+    private void Refresh() => StateHasChanged();
+
+    public void Dispose() => State.OnChanged -= Refresh;
+}

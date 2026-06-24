@@ -1,0 +1,220 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+
+@* Shown when a Chart-kind FieldElement is selected *@
+
+@{
+    var chart = Field.Chart ??= new ChartDefinition();
+    var dataSources = State.Report.DataSources;
+    var defaultColors = new[] { "#4472C4","#ED7D31","#A9D18E","#FF0000","#FFC000","#5B9BD5","#70AD47","#7030A0" };
+}
+
+<div class="rd-props__section">
+    <div class="rd-props__title">Chart: <strong>@Field.Name</strong></div>
+
+    <!-- ── Position & Size ──────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Position &amp; Size</div>
+    <PropRow Label="X (pt)">
+        <NumInput Value="Field.X" ValueChanged="v => Change(() => Field.X = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Y (pt)">
+        <NumInput Value="Field.Y" ValueChanged="v => Change(() => Field.Y = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Width (pt)">
+        <NumInput Value="Field.Width" ValueChanged="v => Change(() => Field.Width = Math.Max(40, v))" Step="1" Min="40" />
+    </PropRow>
+    <PropRow Label="Height (pt)">
+        <NumInput Value="Field.Height" ValueChanged="v => Change(() => Field.Height = Math.Max(30, v))" Step="1" Min="30" />
+    </PropRow>
+
+    <!-- ── Chart Type ───────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Chart Type</div>
+    <PropRow Label="Type">
+        <select class="rd-select" value="@chart.Type"
+                @onchange="e => Change(() => chart.Type = Enum.Parse<ChartType>(e.Value!.ToString()!))">
+            <option value="Pie">Pie</option>
+            <option value="Bar">Bar (Vertical)</option>
+            <option value="BarHorizontal">Bar (Horizontal)</option>
+            <option value="Line">Line</option>
+        </select>
+    </PropRow>
+
+    <!-- ── Data Source ──────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Data</div>
+    <PropRow Label="Data Source">
+        <select class="rd-select" value="@(chart.DataSourceName ?? "")"
+                @onchange="e => Change(() => chart.DataSourceName = e.Value?.ToString())">
+            <option value="">(none)</option>
+            @foreach (var ds in dataSources)
+            {
+                <option value="@ds.Name">@ds.Name</option>
+            }
+        </select>
+    </PropRow>
+
+    @if (chart.Type != ChartType.Pie)
+    {
+        <PropRow Label="Category field">
+            <input class="rd-input rd-input--full"
+                   value="@chart.CategoryField"
+                   @onchange="e => Change(() => chart.CategoryField = e.Value?.ToString())"
+                   placeholder="e.g. Month" />
+        </PropRow>
+    }
+
+    <!-- ── Series ───────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">
+        Series
+        <button class="rd-btn rd-btn--sm rd-btn--icon" style="float:right;margin-top:-2px"
+                title="Add series"
+                @onclick="AddSeries">＋</button>
+    </div>
+
+    @for (int i = 0; i < chart.Series.Count; i++)
+    {
+        var idx   = i;
+        var serie = chart.Series[i];
+        <div class="rd-chart-serie">
+            <div class="rd-chart-serie__header">
+                <input class="rd-input rd-input--full"
+                       value="@serie.Label"
+                       title="Series label"
+                       @onchange="e => OnSerieLabelChange(e, idx, serie)" />
+                <button class="rd-btn rd-btn--sm rd-btn--danger rd-btn--icon"
+                        title="Remove series"
+                        @onclick="() => RemoveSeries(idx)">✕</button>
+            </div>
+            <div class="rd-chart-serie__row">
+                <span class="rd-chart-serie__lbl">Field</span>
+                <input class="rd-input rd-input--full"
+                       value="@serie.FieldName"
+                       placeholder="e.g. Amount"
+                       @onchange="e => Change(() => serie.FieldName = e.Value?.ToString() ?? string.Empty)" />
+            </div>
+            <div class="rd-chart-serie__row">
+                <span class="rd-chart-serie__lbl">Agg</span>
+                <select class="rd-select" value="@serie.Aggregate"
+                        @onchange="e => OnSerieAggChange(e, serie)">
+                    <option value="SUM">SUM</option>
+                    <option value="COUNT">COUNT</option>
+                    <option value="AVG">AVG</option>
+                    <option value="MIN">MIN</option>
+                    <option value="MAX">MAX</option>
+                </select>
+            </div>
+            <div class="rd-chart-serie__row">
+                <span class="rd-chart-serie__lbl">Color</span>
+                <input type="color"
+                       value="@(serie.Color ?? defaultColors[idx % defaultColors.Length])"
+                       class="rd-color-picker"
+                       @onchange="e => Change(() => serie.Color = e.Value?.ToString() ?? defaultColors[idx % defaultColors.Length])" />
+            </div>
+        </div>
+    }
+
+    <!-- ── Appearance ───────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Appearance</div>
+    <PropRow Label="Title">
+        <input class="rd-input rd-input--full"
+               value="@chart.Title"
+               @onchange="e => Change(() => chart.Title = e.Value?.ToString())"
+               placeholder="Chart title" />
+    </PropRow>
+    <PropRow Label="Show legend">
+        <input type="checkbox" checked="@chart.ShowLegend"
+               @onchange="e => Change(() => chart.ShowLegend = (bool)e.Value!)" />
+    </PropRow>
+    <PropRow Label="Show labels">
+        <input type="checkbox" checked="@chart.ShowLabels"
+               @onchange="e => Change(() => chart.ShowLabels = (bool)e.Value!)" />
+    </PropRow>
+    <PropRow Label="Show border">
+        <input type="checkbox" checked="@chart.ShowBorder"
+               @onchange="e => Change(() => chart.ShowBorder = (bool)e.Value!)" />
+    </PropRow>
+    @if (chart.ShowBorder)
+    {
+        <PropRow Label="Border color">
+            <input type="color" value="@chart.BorderColor" class="rd-color-picker"
+                   @onchange="OnBorderColorChange" />
+        </PropRow>
+        <PropRow Label="Border width">
+            <NumInput Value="@chart.BorderWidth"
+                      ValueChanged="v => Change(() => chart.BorderWidth = Math.Max(0.5f, v))"
+                      Min="0.5f" Max="10f" Step="0.5f" />
+        </PropRow>
+    }
+    <PropRow Label="Background">
+        <div style="display:flex;gap:4px;align-items:center;">
+            <input type="color"
+                   value="@(chart.BackgroundColor ?? "#ffffff")"
+                   class="rd-color-picker"
+                   @onchange="e => Change(() => chart.BackgroundColor = e.Value?.ToString())" />
+            <label style="font-size:10px;cursor:pointer;">
+                <input type="checkbox"
+                       checked="@(chart.BackgroundColor == null)"
+                       @onchange="OnBgColorNoneToggle" />
+                None
+            </label>
+        </div>
+    </PropRow>
+
+    <!-- Delete -->
+    <div class="rd-props__footer">
+        <button class="rd-btn rd-btn--danger rd-btn--full" @onclick="DeleteField">🗑 Delete Chart</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement       Field   { get; set; } = default!;
+
+    private void OnSerieLabelChange(ChangeEventArgs e, int idx, ChartSeries serie)
+        => Change(() => serie.Label = e.Value?.ToString() ?? $"Series {idx + 1}");
+
+    private void OnSerieAggChange(ChangeEventArgs e, ChartSeries serie)
+        => Change(() => serie.Aggregate = e.Value?.ToString() ?? "SUM");
+
+    private void OnBorderColorChange(ChangeEventArgs e)
+    {
+        var chart = Field.Chart!;
+        Change(() => chart.BorderColor = e.Value?.ToString() ?? "#CCCCCC");
+    }
+
+    private void OnBgColorNoneToggle(ChangeEventArgs e)
+    {
+        var chart = Field.Chart!;
+        Change(() => chart.BackgroundColor = (bool)e.Value! ? null : "#ffffff");
+    }
+
+    private void Change(Action action)
+    {
+        UndoRedo.Push("Edit chart");
+        action();
+        State.NotifyChanged();
+    }
+
+    private void AddSeries()
+    {
+        var colors = new[] { "#4472C4","#ED7D31","#A9D18E","#FF0000","#FFC000","#5B9BD5","#70AD47","#7030A0" };
+        Change(() => Field.Chart!.Series.Add(new ChartSeries
+        {
+            Label     = $"Series {Field.Chart.Series.Count + 1}",
+            FieldName = "",
+            Color     = colors[Field.Chart.Series.Count % colors.Length],
+            Aggregate = "SUM"
+        }));
+    }
+
+    private void RemoveSeries(int idx)
+    {
+        if (Field.Chart!.Series.Count > 1)
+            Change(() => Field.Chart.Series.RemoveAt(idx));
+    }
+
+    private void DeleteField()
+    {
+        UndoRedo.Push("Delete chart");
+        State.DeleteField(Section, Field);
+    }
+}

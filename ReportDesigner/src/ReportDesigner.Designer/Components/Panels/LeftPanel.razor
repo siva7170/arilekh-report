@@ -1,0 +1,43 @@
+@inject DesignerStateService State
+@implements IDisposable
+
+<div class="rd-left-panel">
+
+    <!-- Tab headers -->
+    <div class="rd-tabs">
+        <button class="rd-tab @(_tab == Tab.Fields    ? "rd-tab--active" : "")"
+                @onclick="() => _tab = Tab.Fields"    title="Fields & Elements">Fields</button>
+        <button class="rd-tab @(_tab == Tab.Sources   ? "rd-tab--active" : "")"
+                @onclick="() => _tab = Tab.Sources"   title="Data Sources">Sources</button>
+        <button class="rd-tab @(_tab == Tab.Explorer  ? "rd-tab--active" : "")"
+                @onclick="() => _tab = Tab.Explorer"  title="Canvas Explorer">Explorer</button>
+    </div>
+
+    <!-- Tab bodies (scrollable) -->
+    <div class="rd-tab-body">
+
+        @if (_tab == Tab.Fields)
+        {
+            <FieldPalette />
+        }
+        else if (_tab == Tab.Sources)
+        {
+            <DataSourcesPanel OpenSchemaEditorCallback="OpenSchemaEditorCallback" />
+        }
+        else if (_tab == Tab.Explorer)
+        {
+            <CanvasExplorer />
+        }
+
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OpenSchemaEditorCallback { get; set; }
+    private enum Tab { Fields, Sources, Explorer }
+    private Tab _tab = Tab.Fields;
+
+    protected override void OnInitialized()  => State.OnChanged += Refresh;
+    private void Refresh() => StateHasChanged();
+    public void Dispose()  => State.OnChanged -= Refresh;
+}

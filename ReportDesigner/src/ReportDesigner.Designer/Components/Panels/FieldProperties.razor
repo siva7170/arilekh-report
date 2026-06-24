@@ -1,0 +1,323 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@inject IJSRuntime JS
+
+<div class="rd-props__section">
+    <div class="rd-props__title">Field: <strong>@Field.Name</strong></div>
+
+    <!-- ── Position & Size ────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Position &amp; Size</div>
+
+    <PropRow Label="X (pt)">
+        <NumInput Value="Field.X" ValueChanged="v => Change(() => Field.X = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Y (pt)">
+        <NumInput Value="Field.Y" ValueChanged="v => Change(() => Field.Y = v)" Step="1" />
+    </PropRow>
+    <PropRow Label="Width (pt)">
+        <NumInput Value="Field.Width" ValueChanged="v => Change(() => Field.Width = Math.Max(10, v))" Step="1" Min="10" />
+    </PropRow>
+    <PropRow Label="Height (pt)">
+        <NumInput Value="Field.Height" ValueChanged="v => Change(() => Field.Height = Math.Max(8, v))" Step="1" Min="8" />
+    </PropRow>
+
+    <!-- ── Content ───────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Content</div>
+
+    <PropRow Label="Expression">
+        <input class="rd-input rd-input--full"
+               value="@Field.Expression"
+               @onchange="e => Change(() => Field.Expression = e.Value?.ToString())"
+               placeholder="e.g. Fields.Amount" />
+    </PropRow>
+    <PropRow Label="Static Text">
+        <input class="rd-input rd-input--full"
+               value="@Field.Text"
+               @onchange="e => Change(() => Field.Text = e.Value?.ToString())"
+               placeholder="Label text" />
+    </PropRow>
+
+    <!-- ── Format ────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Format</div>
+
+    <PropRow Label="Format">
+        <select class="rd-select" value="@Field.Format"
+                @onchange="e => Change(() => Field.Format = Enum.Parse<FieldFormat>(e.Value!.ToString()!))">
+            @foreach (var f in Enum.GetValues<FieldFormat>())
+            {
+                <option value="@f">@f</option>
+            }
+        </select>
+    </PropRow>
+    @if (Field.Format == FieldFormat.Custom)
+    {
+        <PropRow Label="Format string">
+            <input class="rd-input rd-input--full"
+                   value="@Field.FormatString"
+                   @onchange="e => Change(() => Field.FormatString = e.Value?.ToString())"
+                   placeholder="e.g. dd MMM yyyy" />
+        </PropRow>
+    }
+
+    <PropRow Label="Align">
+        <div class="rd-align-grid">
+            @foreach (var v in new[] { FieldVerticalAlign.Top, FieldVerticalAlign.Middle, FieldVerticalAlign.Bottom })
+            {
+                @foreach (var h in new[] { FieldAlignment.Left, FieldAlignment.Center, FieldAlignment.Right })
+                {
+                    <button class="rd-align-cell @(Field.Alignment == h && Field.VerticalAlign == v ? "active" : "")"
+                            title="@($"{v}-{h}")"
+                            @onclick="() => Change(() => { Field.Alignment = h; Field.VerticalAlign = v; })">
+                        @AlignIcon3x3(h, v)
+                    </button>
+                }
+            }
+        </div>
+    </PropRow>
+
+    <PropRow Label="Rotation">
+        <div style="display:flex;gap:4px;align-items:center;">
+            <NumInput Value="@Field.Rotation"
+                      ValueChanged="v => Change(() => Field.Rotation = ((v % 360) + 360) % 360)"
+                      Min="0" Max="359" Step="15" />
+            <span style="font-size:9px;color:var(--rd-text-muted)">°</span>
+            <button class="rd-btn rd-btn--xs" @onclick="() => Change(() => Field.Rotation = 0)">↺</button>
+        </div>
+    </PropRow>
+
+    <!-- ── Style ─────────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Style</div>
+
+    <PropRow Label="Font family">
+        <input class="rd-input rd-input--full"
+               value="@(Field.Style?.FontFamily ?? "")"
+               @onchange="e => ChangeStyle(s => s.FontFamily = e.Value?.ToString())"
+               placeholder="Arial" />
+    </PropRow>
+    <PropRow Label="Font size (pt)">
+        <NumInput Value="@(Field.Style?.FontSize ?? 9f)"
+                  ValueChanged="v => ChangeStyle(s => s.FontSize = v)"
+                  Step="0.5f" Min="4" />
+    </PropRow>
+    <PropRow Label="Style">
+        <div class="rd-btn-group">
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Bold==true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Bold = !s.Bold)"><b>B</b></button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Italic==true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Italic = !s.Italic)"><i>I</i></button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Underline==true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Underline = !s.Underline)"><u>U</u></button>
+        </div>
+    </PropRow>
+    <PropRow Label="Fore color">
+        <input type="color"
+               value="@(Field.Style?.ForeColor ?? "#000000")"
+               @onchange="e => ChangeStyle(s => s.ForeColor = e.Value?.ToString())"
+               class="rd-color-picker" />
+    </PropRow>
+    <PropRow Label="Back color">
+        <input type="color"
+               value="@(Field.Style?.BackColor ?? "#ffffff")"
+               @onchange="e => ChangeStyle(s => s.BackColor = e.Value?.ToString())"
+               class="rd-color-picker" />
+    </PropRow>
+
+    <!-- ── Shape properties (Line / Box / Circle / Image) ──────── -->\n    @if (Field.Kind != ElementKind.Field)
+    {
+        <div class="rd-props__group-title">Shape</div>
+
+        @if (Field.Kind != ElementKind.Image)
+        {
+            <PropRow Label="Stroke color">
+                <input type="color"
+                       value="@(Field.StrokeColor ?? "#000000")"
+                       @onchange="e => Change(() => Field.StrokeColor = e.Value?.ToString())" />
+            </PropRow>
+            <PropRow Label="Stroke width">
+                <NumInput Value="@Field.StrokeWidth"
+                          ValueChanged="v => Change(() => Field.StrokeWidth = Math.Max(0.5f, v))"
+                          Min="0.5f" Max="20f" Step="0.5f" />
+            </PropRow>
+        }
+
+        @if (Field.Kind == ElementKind.Box || Field.Kind == ElementKind.Circle)
+        {
+            <PropRow Label="Fill color">
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <input type="color"
+                           value="@(Field.FillColor ?? "#ffffff")"
+                           @onchange="e => Change(() => Field.FillColor = e.Value?.ToString())" />
+                    <label style="font-size:10px;cursor:pointer;">
+                        <input type="checkbox"
+                               checked="@(Field.FillColor == null)"
+                               @onchange="OnFillColorNoneToggle" />
+                        None
+                    </label>
+                </div>
+            </PropRow>
+        }
+
+        @if (Field.Kind == ElementKind.Box)
+        {
+            <PropRow Label="Border radius">
+                <NumInput Value="@Field.BorderRadius"
+                          ValueChanged="v => Change(() => Field.BorderRadius = Math.Clamp(v, 0f, 50f))"
+                          Min="0f" Max="50f" Step="1f" />
+            </PropRow>
+        }
+
+        @if (Field.Kind == ElementKind.Image)
+        {
+            <PropRow Label="Image">
+                <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <button class="rd-btn rd-btn--sm rd-btn--primary" @onclick="PickImageFile">
+                            📁 Pick file…
+                        </button>
+                        <span style="font-size:9px;color:var(--rd-text-muted);">
+                            Quality: @_imageQuality%
+                        </span>
+                    </div>
+                    <input type="range" min="10" max="100" step="5"
+                           value="@_imageQuality"
+                           @oninput="e => _imageQuality = int.Parse(e.Value!.ToString()!)"
+                           title="Image quality (lower = smaller file size)" />
+                    @if (!string.IsNullOrWhiteSpace(Field.ImageSrc))
+                    {
+                        <img src="@Field.ImageSrc"
+                             style="max-width:100%;max-height:48px;object-fit:contain;border:1px solid var(--rd-border);border-radius:2px;" />
+                        <button class="rd-btn rd-btn--xs rd-btn--danger"
+                                @onclick="() => Change(() => Field.ImageSrc = null)">✕ Clear</button>
+                    }
+                    <InputFile id="@($"image-file-input-{Field.Name}")"
+                               OnChange="OnImageFileSelected"
+                               accept="image/*"
+                               style="display:none" />
+                </div>
+            </PropRow>
+            <PropRow Label="Stretch">
+                <select class="rd-input rd-input--full"
+                        value="@Field.ImageStretch"
+                        @onchange="OnImageStretchChange">
+                    <option value="contain">Contain</option>
+                    <option value="cover">Cover</option>
+                    <option value="fill">Fill</option>
+                    <option value="none">None</option>
+                </select>
+            </PropRow>
+        }
+    }
+
+    <!-- ── Behaviour ─────────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Behaviour</div>
+
+    <PropRow Label="Can grow">
+        <input type="checkbox" checked="@Field.CanGrow"
+               @onchange="OnCanGrowChange" />
+    </PropRow>
+    <PropRow Label="Suppress when">
+        <input class="rd-input rd-input--full"
+               value="@Field.SuppressExpression"
+               @onchange="e => Change(() => Field.SuppressExpression = e.Value?.ToString())"
+               placeholder="Fields.Qty == 0" />
+    </PropRow>
+    <PropRow Label="Hyperlink">
+        <input class="rd-input rd-input--full"
+               value="@Field.HyperlinkExpression"
+               @onchange="e => Change(() => Field.HyperlinkExpression = e.Value?.ToString())"
+               placeholder="Fields.Url" />
+    </PropRow>
+
+    <!-- Delete button -->
+    <div class="rd-props__footer">
+        <button class="rd-btn rd-btn--danger rd-btn--full"
+                @onclick="DeleteField">🗑 Delete Field</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement       Field   { get; set; } = default!;
+
+    private int _imageQuality = 80;
+
+    private async Task PickImageFile()
+        => await JS.InvokeVoidAsync("eval",
+            $"document.getElementById('image-file-input-{Field.Name}').click()");
+
+    private async Task OnImageFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        var maxBytes = 10 * 1024 * 1024; // 10MB read limit
+        var buf = new byte[Math.Min(file.Size, maxBytes)];
+        await using var stream = file.OpenReadStream(maxBytes);
+        var read   = await stream.ReadAsync(buf);
+        var b64raw = Convert.ToBase64String(buf, 0, read);
+        var mime   = file.ContentType;
+        var rawUri = $"data:{mime};base64,{b64raw}";
+
+        // Compress via browser canvas at chosen quality
+        var quality = _imageQuality / 100.0;
+        var dataUri = await JS.InvokeAsync<string>("eval",
+            $@"(async () => {{
+                const img = new Image();
+                img.src = {System.Text.Json.JsonSerializer.Serialize(rawUri)};
+                await new Promise(r => img.onload = r);
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                return canvas.toDataURL('image/jpeg', {quality.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)});
+            }})()");
+
+        Change(() => Field.ImageSrc = dataUri);
+    }
+
+    private void OnImageStretchChange(ChangeEventArgs e)
+        => Change(() => Field.ImageStretch = e.Value?.ToString() ?? "contain");
+
+    private void OnFillColorNoneToggle(ChangeEventArgs e)
+        => Change(() => Field.FillColor = (bool)e.Value! ? null : "#ffffff");
+
+    private void OnCanGrowChange(ChangeEventArgs e)
+        => Change(() => Field.CanGrow = (bool)e.Value!);
+
+    private void Change(Action action)
+    {
+        UndoRedo.Push("Edit field");
+        action();
+        State.NotifyChanged();
+    }
+
+    private void ChangeStyle(Action<FieldStyle> action)
+    {
+        UndoRedo.Push("Edit field style");
+        Field.Style ??= new FieldStyle();
+        action(Field.Style);
+        State.NotifyChanged();
+    }
+
+    private void DeleteField()
+    {
+        UndoRedo.Push("Delete field");
+        State.DeleteField(Section, Field);
+    }
+
+    private static string AlignIcon3x3(FieldAlignment h, FieldVerticalAlign v)
+    {
+        return (v, h) switch
+        {
+            (FieldVerticalAlign.Top,    FieldAlignment.Left)   => "↖",
+            (FieldVerticalAlign.Top,    FieldAlignment.Center) => "↑",
+            (FieldVerticalAlign.Top,    FieldAlignment.Right)  => "↗",
+            (FieldVerticalAlign.Middle, FieldAlignment.Left)   => "←",
+            (FieldVerticalAlign.Middle, FieldAlignment.Center) => "·",
+            (FieldVerticalAlign.Middle, FieldAlignment.Right)  => "→",
+            (FieldVerticalAlign.Bottom, FieldAlignment.Left)   => "↙",
+            (FieldVerticalAlign.Bottom, FieldAlignment.Center) => "↓",
+            (FieldVerticalAlign.Bottom, FieldAlignment.Right)  => "↘",
+            _ => "·"
+        };
+    }
+}

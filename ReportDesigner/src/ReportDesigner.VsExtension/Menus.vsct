@@ -1,0 +1,98 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<Extern href="stdidcmd.h"/>
+	<Extern href="vsshlids.h"/>
+
+	<Commands package="guidReportDesignerPackage">
+		<Menus>
+			<Menu guid="guidReportDesignerPackageCmdSet" id="TopLevelMenu" priority="0x0600" type="Menu">
+				<Parent guid="guidSHLMainMenu" id="IDG_VS_MM_TOOLSADDINS" />
+				<CommandFlag>AlwaysCreate</CommandFlag>
+				<Strings>
+					<ButtonText>Report Designer</ButtonText>
+					<CommandName>Report Designer</CommandName>
+				</Strings>
+			</Menu>
+
+			<Menu guid="guidReportDesignerPackageCmdSet" id="MenuId1" priority="0x2000" type="Menu">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="MyMainMenuGroup"/>
+				<Strings>
+					<ButtonText>Report Designer</ButtonText>
+					<CommandName>ReportDesigner</CommandName>
+				</Strings>
+			</Menu>
+		</Menus>
+
+		<Groups>
+			<Group guid="guidReportDesignerPackageCmdSet" id="MyMainMenuGroup" priority="0x0601">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="TopLevelMenu"/>
+			</Group>
+
+			<Group guid="guidReportDesignerPackageCmdSet" id="SubMenuGroup" priority="0x1021">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="MenuId1"/>
+			</Group>
+
+			<Group guid="guidReportDesignerPackageCmdSet" id="CtxMenuGroup" priority="0x1022">
+				<Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
+			</Group>
+		</Groups>
+
+		<Buttons>
+			<Button guid="guidReportDesignerPackageCmdSet" id="Command1Id" priority="0x0100" type="Button">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="MyMainMenuGroup" />
+				<Icon guid="guidImages" id="bmpPic1" />
+				<Strings>
+					<ButtonText>New Report</ButtonText>
+					<ToolTipText>Create a new .rdx report definition file</ToolTipText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidReportDesignerPackageCmdSet" id="Command2Id" priority="0x0102" type="Button">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="MyMainMenuGroup" />
+				<Icon guid="guidImages" id="bmpPic1" />
+				<Strings>
+					<ButtonText>Open Report</ButtonText>
+					<ToolTipText>Open an existing .rdx file in the Report Designer</ToolTipText>
+				</Strings>
+			</Button>
+
+			<Button guid="guidReportDesignerPackageCmdSet" id="Command3Id" priority="0x0103" type="Button">
+				<Parent guid="guidReportDesignerPackageCmdSet" id="CtxMenuGroup" />
+				<Icon guid="guidImages" id="bmpPic1" />
+				<CommandFlag>DefaultInvisible</CommandFlag>
+				<CommandFlag>DynamicVisibility</CommandFlag>
+				<Strings>
+					<ButtonText>Edit Dataset Schema…</ButtonText>
+					<ToolTipText>Open the Dataset Schema Editor for this .rds file</ToolTipText>
+				</Strings>
+			</Button>
+		</Buttons>
+
+		<Bitmaps>
+			<Bitmap guid="guidImages" href="Resources\Command1.png" usedList="bmpPic1, bmpPic2, bmpPicSearch, bmpPicX, bmpPicArrows, bmpPicStrikethrough"/>
+		</Bitmaps>
+	</Commands>
+
+	<Symbols>
+		<GuidSymbol name="guidReportDesignerPackage" value="{c8aad8d9-cd73-4d6a-be4c-2540f4432041}" />
+		<GuidSymbol name="guidReportDesignerPackageCmdSet" value="{54fbac16-ecb7-43e9-9509-db6b280c39f2}">
+			<IDSymbol name="MyMainMenuGroup" value="0x0601" />
+			<IDSymbol name="MyMenuGroup" value="0x1020" />
+			<IDSymbol name="SubMenuGroup" value="0x1021" />
+			<IDSymbol name="CtxMenuGroup" value="0x1022" />
+			<IDSymbol name="Command1Id" value="0x0100" />
+			<IDSymbol name="TopLevelMenu" value="0x1031"/>
+			<IDSymbol name="Command2Id" value="0x0102" />
+			<IDSymbol name="Command3Id" value="0x0103" />
+			<IDSymbol name="MenuId1" value="0x0101" />
+		</GuidSymbol>
+		<GuidSymbol name="guidImages" value="{753ca4bc-dc99-4e91-b87d-0a1bb0b417ec}" >
+			<IDSymbol name="bmpPic1" value="1" />
+			<IDSymbol name="bmpPic2" value="2" />
+			<IDSymbol name="bmpPicSearch" value="3" />
+			<IDSymbol name="bmpPicX" value="4" />
+			<IDSymbol name="bmpPicArrows" value="5" />
+			<IDSymbol name="bmpPicStrikethrough" value="6" />
+		</GuidSymbol>
+	</Symbols>
+</CommandTable>

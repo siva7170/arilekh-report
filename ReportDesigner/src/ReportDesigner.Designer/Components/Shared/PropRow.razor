@@ -1,0 +1,9 @@
+<div class="rd-prop-row">
+    <label class="rd-prop-row__label">@Label</label>
+    <div class="rd-prop-row__value">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string         Label        { get; set; } = string.Empty;
+    [Parameter]                 public RenderFragment? ChildContent { get; set; }
+}

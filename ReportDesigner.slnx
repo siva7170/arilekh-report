@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="ReportDesigner/src/ReportDesigner.Core/ReportDesigner.Core.csproj" Id="1a962c74-8b1d-436e-b310-63cc6fa65013" />
+    <Project Path="ReportDesigner/src/ReportDesigner.Designer/ReportDesigner.Designer.csproj" Id="5bd601d3-0f1d-4f98-b3b7-0b45381792b7" />
+    <Project Path="ReportDesigner/src/ReportDesigner.VsExtension/ReportDesigner.VsExtension.csproj" Id="8e6edf5e-75fe-42ae-b637-4e738158b08a">
+      <Deploy />
+    </Project>
+    <Project Path="ReportDesigner/src/SampleTest/SampleTest/SampleTest.csproj" Id="7881960a-5846-4d09-8739-18bcd61d4258" />
+  </Folder>
+</Solution>

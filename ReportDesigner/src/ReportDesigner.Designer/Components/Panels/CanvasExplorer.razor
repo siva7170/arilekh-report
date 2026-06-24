@@ -1,0 +1,158 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@implements IDisposable
+
+<div class="rd-explorer">
+    <div class="rd-palette__section-title" style="display:flex;justify-content:space-between;align-items:center;">
+        Canvas Explorer
+    </div>
+
+    @foreach (var section in State.Report.Sections)
+    {
+        var secExpanded = _expanded.Contains(section.Name);
+
+        <div class="rd-explorer__section">
+            <!-- Section row -->
+            <div class="rd-explorer__row rd-explorer__row--section
+                        @(State.Selection.Section == section && !State.Selection.HasField ? "rd-explorer__row--selected" : "")"
+                 @onclick="() => SelectSection(section)">
+                <button class="rd-explorer__toggle"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => ToggleSection(section.Name)">
+                    @(secExpanded ? "▾" : "▸")
+                </button>
+                <span class="rd-explorer__icon">@SectionIcon(section.Type)</span>
+                <span class="rd-explorer__label" title="@section.Name">@SectionLabel(section)</span>
+                <span class="rd-explorer__count">@section.Fields.Count</span>
+            </div>
+
+            @if (secExpanded)
+            {
+                <!-- Group folders then ungrouped fields -->
+                var groupedFields   = section.Fields.Where(f => !string.IsNullOrEmpty(f.GroupName)).GroupBy(f => f.GroupName!);
+                var ungroupedFields = section.Fields.Where(f => string.IsNullOrEmpty(f.GroupName)).ToList();
+
+                @foreach (var grp in groupedFields)
+                {
+                    var grpKey     = $"{section.Name}|{grp.Key}";
+                    var grpExpanded = _expanded.Contains(grpKey);
+
+                    <div class="rd-explorer__row rd-explorer__row--group"
+                         @onclick:stopPropagation="true"
+                         @onclick="() => ToggleSection(grpKey)">
+                        <span class="rd-explorer__indent"></span>
+                        <button class="rd-explorer__toggle">@(grpExpanded ? "▾" : "▸")</button>
+                        <span class="rd-explorer__folder-icon">📁</span>
+                        <span class="rd-explorer__label">@grp.Key</span>
+                        <span class="rd-explorer__count">@grp.Count()</span>
+                    </div>
+
+                    @if (grpExpanded)
+                    {
+                        @foreach (var field in grp)
+                        {
+                            var fld = field;
+                            <CanvasExplorerField Section="section" Field="fld"
+                                                 IsSelected="State.Selection.Field == fld"
+                                                 OnSelect="EventCallback.Factory.Create(this, () => SelectField(section, fld))"
+                                                 OnMoveGroupAction="MoveToGroup"
+                                                 Indent="2" />
+                        }
+                    }
+                }
+
+                @foreach (var field in ungroupedFields)
+                {
+                    var fld2 = field;
+                    <CanvasExplorerField Section="section" Field="fld2"
+                                         IsSelected="State.Selection.Field == fld2"
+                                         OnSelect="EventCallback.Factory.Create(this, () => SelectField(section, fld2))"
+                                         OnMoveGroupAction="MoveToGroup"
+                                         Indent="1" />
+                }
+
+                @if (!section.Fields.Any())
+                {
+                    <div class="rd-explorer__empty">empty</div>
+                }
+
+                <!-- Add group button -->
+                <div class="rd-explorer__add-group">
+                    <input class="rd-input rd-input--xs" style="flex:1"
+                           @bind="_newGroupName"
+                           placeholder="New folder name…" />
+                    <button class="rd-btn rd-btn--xs" @onclick="() => AddGroup(section)">+</button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private readonly HashSet<string> _expanded = new();
+    private string _newGroupName = string.Empty;
+
+    private void ToggleSection(string key)
+    {
+        if (!_expanded.Add(key)) _expanded.Remove(key);
+    }
+
+    private void SelectSection(SectionDefinition section)
+        => State.SelectSection(section);
+
+    private void SelectField(SectionDefinition section, FieldElement field)
+        => State.SelectField(section, field);
+
+    private void MoveToGroup(FieldElement field, string? groupName)
+    {
+        UndoRedo.Push("Move to group");
+        field.GroupName = groupName;
+        State.NotifyChanged();
+    }
+
+    private void AddGroup(SectionDefinition section)
+    {
+        var name = _newGroupName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        // Expand the new group
+        _expanded.Add($"{section.Name}|{name}");
+        _newGroupName = string.Empty;
+        // Notify so any selected field can be assigned
+        State.NotifyChanged();
+    }
+
+    private static string SectionIcon(SectionType t) => t switch
+    {
+        SectionType.ReportHeader => "RH",
+        SectionType.PageHeader   => "PH",
+        SectionType.GroupHeader  => "GH",
+        SectionType.Detail       => "Det",
+        SectionType.GroupFooter  => "GF",
+        SectionType.PageFooter   => "PF",
+        SectionType.ReportFooter => "RF",
+        _ => "?"
+    };
+
+    private static string SectionLabel(SectionDefinition s)
+    {
+        var label = s.Type.ToString();
+        if (!string.IsNullOrEmpty(s.GroupField)) label += $" [{s.GroupField}]";
+        return label;
+    }
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += Refresh;
+        foreach (var s in State.Report.Sections)
+            _expanded.Add(s.Name);
+    }
+
+    private void Refresh()
+    {
+        foreach (var s in State.Report.Sections)
+            _expanded.Add(s.Name);
+        StateHasChanged();
+    }
+
+    public void Dispose() => State.OnChanged -= Refresh;
+}

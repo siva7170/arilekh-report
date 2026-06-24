@@ -1,0 +1,87 @@
+@inject ReportViewerService Viewer
+@implements IDisposable
+
+<div class="rv-left">
+
+    <div class="rv-left__header">
+        <span class="rv-left__title">Pages</span>
+        <span class="rv-left__count">@Viewer.PageCount pg</span>
+    </div>
+
+    <!-- Search pages -->
+    <div class="rv-left__search">
+        <input class="rv-input" placeholder="Jump to page…" type="number" min="1"
+               max="@Viewer.PageCount"
+               @onkeydown="OnSearchKey"
+               @bind="_jumpPage" />
+        <button class="rv-btn rv-btn--sm" @onclick="DoJump">Go</button>
+    </div>
+
+    <!-- Bookmark list -->
+    <div class="rv-left__list">
+        @foreach (var bm in FilteredBookmarks)
+        {
+            <div class="rv-bm rv-bm--@bm.Kind.ToString().ToLower()
+                         @(Viewer.CurrentPage >= bm.PageNumber && IsActive(bm) ? " rv-bm--active" : "")"
+                 @onclick="() => Viewer.GoTo(bm.PageNumber)"
+                 title="Go to page @bm.PageNumber">
+                <span class="rv-bm__icon">@BmIcon(bm.Kind)</span>
+                <span class="rv-bm__label">@bm.Label</span>
+                <span class="rv-bm__page">@bm.PageNumber</span>
+            </div>
+        }
+    </div>
+
+    <!-- Report metadata -->
+    @if (Viewer.HasReport)
+    {
+        <div class="rv-left__footer">
+            <div>Total: <strong>@Viewer.PageCount</strong> pages</div>
+        </div>
+    }
+
+</div>
+
+@code {
+    private string _search     = string.Empty;
+    private int    _jumpPage   = 1;
+
+    private IEnumerable<ViewerBookmark> FilteredBookmarks =>
+        string.IsNullOrWhiteSpace(_search)
+            ? Viewer.Bookmarks
+            : Viewer.Bookmarks.Where(b => b.Label.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsActive(ViewerBookmark bm)
+    {
+        for (int i = 0; i < Viewer.Bookmarks.Count; i++)
+        {
+            if (Viewer.Bookmarks[i] != bm) continue;
+            var next = i + 1 < Viewer.Bookmarks.Count ? Viewer.Bookmarks[i + 1] : null;
+            return next is null || Viewer.CurrentPage < next.PageNumber;
+        }
+        return false;
+    }
+
+    private void DoJump()
+    {
+        if (_jumpPage >= 1 && _jumpPage <= Viewer.PageCount)
+            Viewer.GoTo(_jumpPage);
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") DoJump();
+    }
+
+    private static string BmIcon(BookmarkKind k) => k switch
+    {
+        BookmarkKind.Header => "📋",
+        BookmarkKind.Group  => "📁",
+        BookmarkKind.Range  => "📑",
+        _                   => "📄",
+    };
+
+    protected override void OnInitialized()  => Viewer.OnChanged += Refresh;
+    private void Refresh() => StateHasChanged();
+    public void Dispose()  => Viewer.OnChanged -= Refresh;
+}

@@ -1,0 +1,127 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+
+<div class="rd-props__section">
+    <div class="rd-props__title">📄 Report Settings</div>
+
+    <PropRow Label="Report name">
+        <input class="rd-input rd-input--full" value="@State.Report.Name"
+               @onchange="e => Change(() => State.Report.Name = e.Value?.ToString() ?? State.Report.Name)" />
+    </PropRow>
+    <PropRow Label="Description">
+        <input class="rd-input rd-input--full" value="@State.Report.Description"
+               @onchange="e => Change(() => State.Report.Description = e.Value?.ToString())" />
+    </PropRow>
+    <PropRow Label="Author">
+        <input class="rd-input rd-input--full" value="@State.Report.Author"
+               @onchange="e => Change(() => State.Report.Author = e.Value?.ToString())" />
+    </PropRow>
+
+    <div class="rd-props__group-title">Page Setup</div>
+
+    <PropRow Label="Page size">
+        <select class="rd-select" value="@State.Report.PageSetup.Size"
+                @onchange="e => Change(() => ApplyPageSize(Enum.Parse<PageSize>(e.Value!.ToString()!)))">
+            @foreach (var s in Enum.GetValues<PageSize>())
+            {
+                <option value="@s">@s</option>
+            }
+        </select>
+    </PropRow>
+    <PropRow Label="Orientation">
+        <div class="rd-btn-group">
+            @foreach (var o in Enum.GetValues<PageOrientation>())
+            {
+                <button class="rd-btn rd-btn--sm @(State.Report.PageSetup.Orientation == o ? "active" : "")"
+                        @onclick="() => Change(() => ApplyOrientation(o))">
+                    @(o == PageOrientation.Portrait ? "⬜ Portrait" : "🟥 Landscape")
+                </button>
+            }
+        </div>
+    </PropRow>
+    <PropRow Label="Margin top (pt)">
+        <NumInput Value="State.Report.PageSetup.MarginTop"
+                  ValueChanged="v => Change(() => State.Report.PageSetup.MarginTop = v)"
+                  Step="2" />
+    </PropRow>
+    <PropRow Label="Margin bottom (pt)">
+        <NumInput Value="State.Report.PageSetup.MarginBottom"
+                  ValueChanged="v => Change(() => State.Report.PageSetup.MarginBottom = v)"
+                  Step="2" />
+    </PropRow>
+    <PropRow Label="Margin left (pt)">
+        <NumInput Value="State.Report.PageSetup.MarginLeft"
+                  ValueChanged="v => Change(() => State.Report.PageSetup.MarginLeft = v)"
+                  Step="2" />
+    </PropRow>
+    <PropRow Label="Margin right (pt)">
+        <NumInput Value="State.Report.PageSetup.MarginRight"
+                  ValueChanged="v => Change(() => State.Report.PageSetup.MarginRight = v)"
+                  Step="2" />
+    </PropRow>
+
+    <div class="rd-props__group-title">Default Style</div>
+
+    <PropRow Label="Font family">
+        <input class="rd-input rd-input--full" value="@State.Report.DefaultStyle.FontFamily"
+               @onchange='e => Change(() => State.Report.DefaultStyle.FontFamily = e.Value?.ToString() ?? "Arial")' />
+    </PropRow>
+    <PropRow Label="Font size (pt)">
+        <NumInput Value="State.Report.DefaultStyle.FontSize"
+                  ValueChanged="v => Change(() => State.Report.DefaultStyle.FontSize = v)"
+                  Step="0.5f" Min="4" />
+    </PropRow>
+    <PropRow Label="Fore color">
+        <input type="color" value="@State.Report.DefaultStyle.ForeColor"
+               @onchange='e => Change(() => State.Report.DefaultStyle.ForeColor = e.Value?.ToString() ?? "#000000")'
+               class="rd-color-picker" />
+    </PropRow>
+
+    <div class="rd-props__group-title">Data Sources</div>
+    <div style="font-size:9px;color:var(--rd-text-muted);padding:4px 0 2px;">
+        Manage data sources in the <strong>Sources</strong> tab (left panel) or via the Schema button.
+    </div>
+    <div style="font-size:9px;padding:2px 0;">
+        @State.Report.DataSources.Count source(s) defined.
+    </div>
+
+</div>
+
+@code {
+
+    private void Change(Action action)
+    {
+        UndoRedo.Push("Edit report settings");
+        action();
+        State.NotifyChanged();
+    }
+
+    private static readonly Dictionary<PageSize, (float W, float H)> _pageSizes = new()
+    {
+        [PageSize.A4]     = (595.28f, 841.89f),
+        [PageSize.Letter] = (612f,    792f   ),
+        [PageSize.Legal]  = (612f,    1008f  ),
+        [PageSize.A3]     = (841.89f, 1190.55f),
+    };
+
+    private void ApplyPageSize(PageSize size)
+    {
+        State.Report.PageSetup.Size = size;
+        if (_pageSizes.TryGetValue(size, out var dim))
+        {
+            var ps = State.Report.PageSetup;
+            if (ps.Orientation == PageOrientation.Landscape)
+            { ps.Width = dim.H; ps.Height = dim.W; }
+            else
+            { ps.Width = dim.W; ps.Height = dim.H; }
+        }
+    }
+
+    private void ApplyOrientation(PageOrientation o)
+    {
+        var ps = State.Report.PageSetup;
+        if (ps.Orientation == o) return;
+        ps.Orientation = o;
+        (ps.Width, ps.Height) = (ps.Height, ps.Width);
+    }
+}

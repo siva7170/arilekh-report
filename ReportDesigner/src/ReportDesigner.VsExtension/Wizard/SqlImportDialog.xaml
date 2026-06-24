@@ -1,0 +1,40 @@
+<Window x:Class="ReportDesigner.VsExtension.Wizard.SqlImportDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Import Fields from SQL"
+        Width="560" Height="380"
+        WindowStartupLocation="CenterOwner"
+        Background="#1e1e2e" Foreground="#abb2bf">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Margin="0,0,0,6" Foreground="#abb2bf" FontSize="11"
+                   TextWrapping="Wrap"
+                   Text="Paste a CREATE TABLE statement or a comma-separated list of column definitions. Example:&#10;  OrderId INT, CustomerName NVARCHAR(100), Amount DECIMAL(18,2), OrderDate DATETIME"/>
+
+        <TextBox x:Name="SqlBox" Grid.Row="1"
+                 AcceptsReturn="True" TextWrapping="Wrap"
+                 FontFamily="Consolas" FontSize="12"
+                 Background="#13131f" Foreground="#e0e0f0"
+                 BorderBrush="#3d3d5c" BorderThickness="1"
+                 VerticalScrollBarVisibility="Auto"
+                 Padding="6"/>
+
+        <TextBlock x:Name="ErrorLabel" Grid.Row="2" Foreground="#e06c75"
+                   FontSize="11" Margin="0,4,0,0" Visibility="Collapsed"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Cancel"   IsCancel="True"  Width="80" Padding="10,4"
+                    Margin="0,0,8,0"   Background="#313148" Foreground="#abb2bf"
+                    BorderBrush="#3d3d5c" BorderThickness="1"/>
+            <Button Content="Import"   IsDefault="True" Width="80" Padding="10,4"
+                    Background="#5b8ef0" Foreground="White" BorderThickness="0"
+                    Click="Import_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

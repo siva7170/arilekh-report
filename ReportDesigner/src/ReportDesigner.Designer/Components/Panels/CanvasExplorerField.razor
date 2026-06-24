@@ -1,0 +1,83 @@
+@inject DesignerStateService State
+
+<div class="rd-explorer__row rd-explorer__row--field @(IsSelected ? "rd-explorer__row--selected" : "")"
+     style="padding-left:@(Indent * 10 + 6)px"
+     @onclick="OnClickField">
+    <span class="rd-explorer__field-icon">@FieldIcon(Field)</span>
+    <span class="rd-explorer__label" title="@Field.Name">@FieldLabel(Field)</span>
+    @if (!string.IsNullOrEmpty(Field.GroupName))
+    {
+        <span class="rd-explorer__group-tag" title="@Field.GroupName">📁</span>
+    }
+    <button class="rd-explorer__field-menu"
+            @onclick:stopPropagation="true"
+            @onclick="ToggleMenu"
+            title="Move to folder">⋯</button>
+    @if (_menuOpen)
+    {
+        <div class="rd-explorer__field-menu-popup" @onclick:stopPropagation="true">
+            <div class="rd-explorer__menu-item"
+                 @onclick="() => MoveGroup(null)">
+                📄 No folder
+            </div>
+            @foreach (var g in GetAllGroups())
+            {
+                var grp = g;
+                <div class="rd-explorer__menu-item"
+                     @onclick="() => MoveGroup(grp)">
+                    📁 @grp
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section    { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement       Field      { get; set; } = default!;
+    [Parameter]                 public bool               IsSelected { get; set; }
+    [Parameter]                 public EventCallback      OnSelect   { get; set; }
+    [Parameter]                 public Action<FieldElement, string?>? OnMoveGroupAction { get; set; }
+    [Parameter]                 public int                Indent     { get; set; } = 1;
+
+    private bool _menuOpen;
+
+    private async Task OnClickField()
+    {
+        _menuOpen = false;
+        await OnSelect.InvokeAsync();
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void MoveGroup(string? groupName)
+    {
+        OnMoveGroupAction?.Invoke(Field, groupName);
+        _menuOpen = false;
+    }
+
+    private IEnumerable<string> GetAllGroups()
+        => Section.Fields
+                  .Where(f => !string.IsNullOrEmpty(f.GroupName))
+                  .Select(f => f.GroupName!)
+                  .Distinct()
+                  .OrderBy(g => g);
+
+    private static string FieldIcon(FieldElement f) => f.Kind switch
+    {
+        ElementKind.Line          => "—",
+        ElementKind.Box           => "□",
+        ElementKind.Circle        => "○",
+        ElementKind.Image         => "🖼",
+        ElementKind.Chart         => "📊",
+        ElementKind.CustomFormula => "Fx",
+        _                         => "T",
+    };
+
+    private static string FieldLabel(FieldElement f)
+    {
+        if (!string.IsNullOrWhiteSpace(f.Text)) return f.Text;
+        if (!string.IsNullOrWhiteSpace(f.Expression)) return f.Expression;
+        return f.Name;
+    }
+}

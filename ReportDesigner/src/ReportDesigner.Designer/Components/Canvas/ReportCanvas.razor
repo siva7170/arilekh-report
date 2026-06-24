@@ -1,0 +1,84 @@
+@inject DesignerStateService State
+@implements IDisposable
+
+<div class="rd-canvas-wrap @(State.Drag.Mode == DragMode.PaletteField ? "rd-canvas--palette-dragging" : "")" id="rd-canvas-wrap">
+
+    @if (State.ShowRuler)
+    {
+        <!-- Horizontal ruler -->
+        <div class="rd-ruler rd-ruler--h">
+            @for (int x = 0; x <= (int)State.Report.PageSetup.PrintableWidth; x += 10)
+            {
+                var px   = x * State.PtToPx;
+                var major = x % 50 == 0;
+                <div class="rd-ruler__tick @(major ? "major" : "")"
+                     style="left:@(px.ToString("F1"))px">
+                    @if (major) { <span>@x</span> }
+                </div>
+            }
+        </div>
+
+        <!-- Vertical ruler -->
+        <div class="rd-ruler rd-ruler--v">
+            @for (int y = 0; y <= 500; y += 10)
+            {
+                var py   = y * State.PtToPx;
+                var major = y % 50 == 0;
+                <div class="rd-ruler__tick @(major ? "major" : "")"
+                     style="top:@(py.ToString("F1"))px">
+                    @if (major) { <span>@y</span> }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Page representation -->
+    <div class="rd-page-area" style="margin-left:@(State.ShowRuler ? "20px" : "0")">
+        <div class="rd-page"
+             id="rd-page"
+             style="width:@(PageWidthPx.ToString("F1"))px; transform:scale(@State.Zoom.ToString("F2")); transform-origin:top left;">
+
+            <!-- Margin guides -->
+            <div class="rd-margin-guide" style="
+                left:@(State.Report.PageSetup.MarginLeft * State.PtToPx / State.Zoom)px;
+                right:@(State.Report.PageSetup.MarginRight * State.PtToPx / State.Zoom)px;
+                top:@(State.Report.PageSetup.MarginTop * State.PtToPx / State.Zoom)px;
+                bottom:@(State.Report.PageSetup.MarginBottom * State.PtToPx / State.Zoom)px;">
+            </div>
+
+            <!-- Section bands (inside printable area) -->
+            <div class="rd-printable"
+                 style="left:@(MarginLeftPx.ToString("F1"))px;
+                        top:@(MarginTopPx.ToString("F1"))px;
+                        width:@(PrintableWidthPx.ToString("F1"))px;">
+
+                @foreach (var section in State.Report.Sections)
+                {
+                    <SectionBand Section="section" PrintableWidth="State.Report.PageSetup.PrintableWidth" />
+                }
+
+                <!-- Drop zone hint when no sections exist -->
+                @if (!State.Report.Sections.Any())
+                {
+                    <div class="rd-empty-hint">
+                        Use the toolbar to add sections, then drag fields from the palette.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private float PageWidthPx      => State.Report.PageSetup.Width          / State.Zoom * State.PtToPx;
+    private float PrintableWidthPx => State.Report.PageSetup.PrintableWidth * State.PtToPx / State.Zoom;
+    private float MarginLeftPx     => State.Report.PageSetup.MarginLeft     * State.PtToPx / State.Zoom;
+    private float MarginTopPx      => State.Report.PageSetup.MarginTop      * State.PtToPx / State.Zoom;
+
+    protected override void OnInitialized()
+        => State.OnChanged += Refresh;
+
+    private void Refresh() => StateHasChanged();
+
+    public void Dispose() => State.OnChanged -= Refresh;
+}

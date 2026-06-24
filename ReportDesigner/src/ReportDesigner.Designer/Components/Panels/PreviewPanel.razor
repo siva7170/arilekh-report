@@ -1,0 +1,66 @@
+@inject PreviewService Preview
+@inject DesignerStateService State
+@implements IDisposable
+
+<div class="rd-preview-panel">
+
+    <div class="rd-preview-toolbar">
+        <button class="rd-btn rd-btn--primary" @onclick="Refresh" disabled="@_loading">
+            @(_loading ? "⏳ Rendering…" : "🔄 Refresh Preview")
+        </button>
+        <span class="rd-preview-toolbar__info">
+            Preview uses sample data from the loaded .rds schema.
+        </span>
+        <button class="rd-btn" @onclick="() => State.SetMode(DesignerMode.Design)">
+            ← Back to Design
+        </button>
+    </div>
+
+    <div class="rd-preview-frame-wrap">
+        @if (_loading)
+        {
+            <div class="rd-preview-loading">
+                <div class="rd-spinner"></div>
+                <span>Rendering report…</span>
+            </div>
+        }
+        else if (_html is not null)
+        {
+            <!-- Render the HTML in an iframe via srcdoc for full isolation -->
+            <iframe class="rd-preview-iframe"
+                    srcdoc="@_html"
+                    sandbox="allow-same-origin">
+            </iframe>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _html;
+    private bool    _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChanged += OnStateChanged;
+        await Refresh();
+    }
+
+    private async void OnStateChanged()
+    {
+        // Auto-refresh preview when switching to Preview mode
+        if (State.Mode == DesignerMode.Preview && _html is null)
+            await Refresh();
+    }
+
+    private async Task Refresh()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        _html    = await Preview.RenderPreviewAsync();
+        _loading = false;
+        StateHasChanged();
+    }
+
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

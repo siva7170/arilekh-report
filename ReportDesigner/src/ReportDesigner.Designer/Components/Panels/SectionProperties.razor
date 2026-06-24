@@ -1,0 +1,106 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+
+<div class="rd-props__section">
+    <div class="rd-props__title">Section: <strong>@Section.Type</strong></div>
+
+    <PropRow Label="Name">
+        <input class="rd-input rd-input--full" value="@Section.Name"
+               @onchange="e => Change(() => Section.Name = e.Value?.ToString() ?? Section.Name)" />
+    </PropRow>
+
+    <PropRow Label="Height (pt)">
+        <NumInput Value="Section.Height"
+                  ValueChanged="v => Change(() => Section.Height = Math.Max(10, v))"
+                  Step="2" Min="10" />
+    </PropRow>
+
+    @if (Section.Type is SectionType.GroupHeader or SectionType.GroupFooter)
+    {
+        <PropRow Label="Group field">
+            <input class="rd-input rd-input--full" value="@Section.GroupField"
+                   @onchange="e => Change(() => Section.GroupField = e.Value?.ToString())"
+                   placeholder="CustomerName" />
+        </PropRow>
+    }
+
+    @if (Section.Type is SectionType.Detail or SectionType.GroupHeader or SectionType.GroupFooter)
+    {
+        <PropRow Label="Data source">
+            <select class="rd-select" value="@Section.DataSourceName"
+                    @onchange="e => Change(() => Section.DataSourceName = e.Value?.ToString())">
+                <option value="">(none)</option>
+                @foreach (var ds in State.Report.DataSources)
+                {
+                    <option value="@ds.Name">@ds.Name</option>
+                }
+            </select>
+        </PropRow>
+    }
+
+    <PropRow Label="Background">
+        <input type="color"
+               value="@(Section.BackColor ?? "#ffffff")"
+               @onchange="e => Change(() => Section.BackColor = e.Value?.ToString())"
+               class="rd-color-picker" />
+        <button class="rd-btn rd-btn--sm" @onclick="() => Change(() => Section.BackColor = null)">Clear</button>
+    </PropRow>
+
+    @if (Section.Type == SectionType.Detail)
+    {
+        <PropRow Label="Alternate rows">
+            <input type="checkbox" checked="@Section.AlternateRows"
+                   @onchange="e => Change(() => Section.AlternateRows = (bool)e.Value!)" />
+        </PropRow>
+        @if (Section.AlternateRows)
+        {
+            <PropRow Label="Alt. color">
+                <input type="color"
+                       value="@(Section.AlternateBackColor ?? "#f5f5f5")"
+                       @onchange="e => Change(() => Section.AlternateBackColor = e.Value?.ToString())"
+                       class="rd-color-picker" />
+            </PropRow>
+        }
+    }
+
+    <PropRow Label="New page before">
+        <input type="checkbox" checked="@Section.NewPageBefore"
+               @onchange="e => Change(() => Section.NewPageBefore = (bool)e.Value!)" />
+    </PropRow>
+    <PropRow Label="New page after">
+        <input type="checkbox" checked="@Section.NewPageAfter"
+               @onchange="e => Change(() => Section.NewPageAfter = (bool)e.Value!)" />
+    </PropRow>
+    <PropRow Label="Keep together">
+        <input type="checkbox" checked="@Section.KeepTogether"
+               @onchange="e => Change(() => Section.KeepTogether = (bool)e.Value!)" />
+    </PropRow>
+    <PropRow Label="Suppress when">
+        <input class="rd-input rd-input--full"
+               value="@Section.SuppressExpression"
+               @onchange="e => Change(() => Section.SuppressExpression = e.Value?.ToString())"
+               placeholder="expression" />
+    </PropRow>
+
+    <div class="rd-props__footer">
+        <button class="rd-btn rd-btn--danger rd-btn--full"
+                @onclick="DeleteSection">🗑 Delete Section</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
+
+    private void Change(Action action)
+    {
+        UndoRedo.Push("Edit section");
+        action();
+        State.NotifyChanged();
+    }
+
+    private void DeleteSection()
+    {
+        UndoRedo.Push("Delete section");
+        State.DeleteSection(Section);
+    }
+}

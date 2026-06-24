@@ -1,0 +1,231 @@
+@page "/viewer"
+@inject ReportViewerService  Viewer
+@inject PreviewService       Preview
+@inject DesignerStateService State
+@inject IJSRuntime           JS
+@implements IAsyncDisposable
+
+<div class="rv-shell" data-theme="@(State.IsDarkMode ? "dark" : "light")">
+
+    <!-- ── Toolbar ──────────────────────────────────────────────────── -->
+    <div class="rv-toolbar">
+        <span class="rv-toolbar__title">Report Viewer</span>
+
+        <!-- Page navigation -->
+        <div class="rv-toolbar__nav">
+            <button class="rv-btn rv-btn--icon" title="First page"
+                    disabled="@(_currentPage <= 1)"
+                    @onclick="() => NavigateTo(1)">⏮</button>
+            <button class="rv-btn rv-btn--icon" title="Previous page"
+                    disabled="@(_currentPage <= 1)"
+                    @onclick="() => NavigateTo(_currentPage - 1)">◀</button>
+
+            <input class="rv-page-input" type="number"
+                   min="1" max="@Viewer.PageCount"
+                   value="@_currentPage"
+                   @onchange="OnPageInputChange" />
+            <span class="rv-toolbar__of">of @Viewer.PageCount</span>
+
+            <button class="rv-btn rv-btn--icon" title="Next page"
+                    disabled="@(_currentPage >= Viewer.PageCount)"
+                    @onclick="() => NavigateTo(_currentPage + 1)">▶</button>
+            <button class="rv-btn rv-btn--icon" title="Last page"
+                    disabled="@(_currentPage >= Viewer.PageCount)"
+                    @onclick="() => NavigateTo(Viewer.PageCount)">⏭</button>
+        </div>
+
+        <!-- Zoom -->
+        <div class="rv-toolbar__zoom">
+            <button class="rv-btn rv-btn--icon" @onclick="ZoomOut">−</button>
+            <span class="rv-toolbar__zoom-val">@((int)(_scale * 100 / 1.333f))%</span>
+            <button class="rv-btn rv-btn--icon" @onclick="ZoomIn">+</button>
+            <button class="rv-btn rv-btn--sm"   @onclick="ZoomReset">1:1</button>
+        </div>
+
+        <!-- Render status -->
+        @if (_loading)
+        {
+            <span class="rv-toolbar__status">⏳ Rendering…</span>
+        }
+        else if (Viewer.HasReport)
+        {
+            <span class="rv-toolbar__status">✓ @Viewer.PageCount pages</span>
+        }
+
+        <button class="rv-btn rv-btn--sm" @onclick="Reload" title="Re-render report">
+            🔄 Refresh
+        </button>
+
+        <a class="rv-btn rv-btn--sm" href="/" title="Back to designer">← Designer</a>
+    </div>
+
+    <!-- ── Body ─────────────────────────────────────────────────────── -->
+    <div class="rv-body">
+
+        <!-- Left panel (bookmarks / page list) -->
+        <ViewerLeftPanel />
+
+        <!-- Virtual page canvas -->
+        <div class="rv-canvas-scroll" id="rv-scroll" @onscroll="OnScroll">
+
+            @if (_loading)
+            {
+                <div class="rv-loading">
+                    <div class="rv-spinner"></div>
+                    <div>Rendering report…</div>
+                </div>
+            }
+            else if (!Viewer.HasReport)
+            {
+                <div class="rv-empty">
+                    No report loaded. <a href="/">Open the designer</a> and click Preview.
+                </div>
+            }
+            else
+            {
+                <!-- Virtual list: placeholder divs for all pages -->
+                <div class="rv-page-list" style="width:@(PageWidthPx + 40)px">
+                    @for (int p = 1; p <= Viewer.PageCount; p++)
+                    {
+                        var pageNum  = p;
+                        var inWindow = IsInWindow(pageNum);
+                        var page     = inWindow ? Viewer.GetPage(pageNum) : null;
+
+                        <!-- Page wrapper: always occupies full height for correct scrollbar -->
+                        <div class="rv-page-wrap" id="rv-pw-@pageNum"
+                             style="height:@(PageHeightPx + PageGapPx)px">
+                            <div class="rv-page-num-label">@pageNum</div>
+
+                            @if (inWindow && page is not null)
+                            {
+                                <ViewerPageRenderer Page="page" Scale="_scale" />
+                            }
+                            else
+                            {
+                                <!-- Placeholder keeps scroll position accurate -->
+                                <div class="rv-page-placeholder"
+                                     style="width:@(PageWidthPx)px;height:@(PageHeightPx)px">
+                                    <span>Page @pageNum</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private int   _currentPage = 1;
+    private float _scale       = 1.333f;   // pt → px at 100%
+    private bool  _loading     = false;
+
+    // Virtual window: only render ±WindowRadius pages around current
+    private const int WindowRadius = 5;
+    private bool IsInWindow(int p) => Math.Abs(p - _currentPage) <= WindowRadius;
+
+    private float PageWidthPx  => Viewer.Document is not null
+        ? Viewer.Document.Pages[0].Width  * _scale : 595f * _scale;
+    private float PageHeightPx => Viewer.Document is not null
+        ? Viewer.Document.Pages[0].Height * _scale : 842f * _scale;
+    private float PageGapPx    => 16f;
+
+    // ── Lifecycle ──────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        Viewer.OnChanged += RefreshFromViewer;
+        if (!Viewer.HasReport)
+            await Reload();
+    }
+
+    private void RefreshFromViewer()
+    {
+        _currentPage = Viewer.CurrentPage;
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            await ScrollToCurrentPage();
+        });
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            // Reuse PreviewService.BuildProvider logic via a dedicated viewer render
+            var doc = await Preview.RenderDocumentAsync();
+            Viewer.Load(doc);
+            _currentPage = 1;
+        }
+        catch (Exception ex)
+        {
+            State.ShowToast($"Render error: {ex.Message}", ToastType.Error, 5000);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+            await ScrollToCurrentPage();
+        }
+    }
+
+    // ── Navigation ─────────────────────────────────────────────────────
+
+    private async Task NavigateTo(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, Math.Max(1, Viewer.PageCount));
+        Viewer.GoTo(_currentPage);
+        StateHasChanged();
+        await ScrollToCurrentPage();
+    }
+
+    private async Task OnPageInputChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var p))
+            await NavigateTo(p);
+    }
+
+    private async Task OnScroll()
+    {
+        // Ask JS which page is most visible and update _currentPage
+        try
+        {
+            var visible = await JS.InvokeAsync<int>("rvGetCurrentPage", "rv-scroll");
+            if (visible > 0 && visible != _currentPage)
+            {
+                _currentPage = visible;
+                StateHasChanged();
+            }
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task ScrollToCurrentPage()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("rvScrollToPage", "rv-scroll", $"rv-pw-{_currentPage}");
+        }
+        catch { /* ignore */ }
+    }
+
+    // ── Zoom ───────────────────────────────────────────────────────────
+
+    private void ZoomIn()    { _scale = Math.Min(_scale * 1.2f, 1.333f * 4); }
+    private void ZoomOut()   { _scale = Math.Max(_scale / 1.2f, 1.333f * 0.25f); }
+    private void ZoomReset() { _scale = 1.333f; }
+
+    // ── Cleanup ────────────────────────────────────────────────────────
+
+    public ValueTask DisposeAsync()
+    {
+        Viewer.OnChanged -= RefreshFromViewer;
+        return ValueTask.CompletedTask;
+    }
+}

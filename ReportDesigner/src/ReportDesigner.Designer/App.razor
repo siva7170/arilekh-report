@@ -1,0 +1,16 @@
+﻿@using ReportDesigner.Designer.Components
+
+<Router AppAssembly="typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+    </Found>
+    <NotFound>
+        <!--
+            Instead of showing "Page not found", always render the designer.
+            This handles /index.html and any other path WebView2 navigates to.
+        -->
+        <LayoutView Layout="typeof(MainLayout)">
+            <ReportDesigner.Designer.Components.DesignerPage />
+        </LayoutView>
+    </NotFound>
+</Router>

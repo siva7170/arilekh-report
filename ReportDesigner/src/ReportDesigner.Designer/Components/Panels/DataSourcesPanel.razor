@@ -1,0 +1,64 @@
+@inject DesignerStateService State
+@implements IDisposable
+
+<div class="rd-palette__section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    Data Sources
+    <button class="rd-btn rd-btn--xs rd-btn--primary"
+            @onclick="OpenSchemaEditor" title="Open Schema Editor">
+        ⚙ Edit
+    </button>
+</div>
+
+@foreach (var ds in State.Report.DataSources)
+{
+    <div class="rd-ds-item">
+        <div class="rd-ds-item__header">
+            <span class="rd-ds-item__icon">@KindIcon(ds.Kind)</span>
+            <span class="rd-ds-item__name" title="@ds.Name">@ds.Name</span>
+            <span class="rd-ds-item__kind">@ds.Kind</span>
+        </div>
+        @if (ds.Fields.Count > 0)
+        {
+            <div class="rd-ds-item__fields">
+                @foreach (var f in ds.Fields.Take(5))
+                {
+                    <span class="rd-ds-item__field-tag" title="@f.DataType">@f.Name</span>
+                }
+                @if (ds.Fields.Count > 5)
+                {
+                    <span class="rd-ds-item__field-tag">+@(ds.Fields.Count - 5) more</span>
+                }
+            </div>
+        }
+        else if (ds.Kind == DataSourceKind.ScalarField)
+        {
+            <div style="font-size:9px;color:var(--rd-text-muted);padding:2px 0;">
+                Type: @ds.ScalarType
+            </div>
+        }
+    </div>
+}
+
+@if (!State.Report.DataSources.Any())
+{
+    <div class="rd-schema__placeholder" style="padding:12px 8px;font-size:10px;color:var(--rd-text-muted);">
+        No data sources. Click ⚙ Edit to add.
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OpenSchemaEditorCallback { get; set; }
+
+    private void OpenSchemaEditor() => OpenSchemaEditorCallback.InvokeAsync();
+
+    private static string KindIcon(DataSourceKind k) => k switch
+    {
+        DataSourceKind.DataSet     => "DS",
+        DataSourceKind.ScalarField => "Fx",
+        _                          => "DT",
+    };
+
+    protected override void OnInitialized() => State.OnChanged += Refresh;
+    private void Refresh() => StateHasChanged();
+    public void Dispose() => State.OnChanged -= Refresh;
+}

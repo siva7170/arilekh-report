@@ -1,0 +1,21 @@
+<input class="rd-input rd-input--num"
+       type="number"
+       value="@Value.ToString("F1")"
+       step="@Step.ToString("F1")"
+       min="@Min.ToString("F1")"
+       max="@Max.ToString("F1")"
+       @onchange="OnChange" />
+
+@code {
+    [Parameter] public float  Value        { get; set; }
+    [Parameter] public float  Step         { get; set; } = 1f;
+    [Parameter] public float  Min          { get; set; } = 0f;
+    [Parameter] public float  Max          { get; set; } = 9999f;
+    [Parameter] public EventCallback<float> ValueChanged { get; set; }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        if (float.TryParse(e.Value?.ToString(), out var v))
+            await ValueChanged.InvokeAsync(Math.Clamp(v, Min, Max));
+    }
+}
