@@ -101,12 +101,18 @@
     </PropRow>
     <PropRow Label="Style">
         <div class="rd-btn-group">
-            <button class="rd-btn rd-btn--sm @(Field.Style?.Bold==true ? "active" : "")"
-                    @onclick="() => ChangeStyle(s => s.Bold = !s.Bold)"><b>B</b></button>
-            <button class="rd-btn rd-btn--sm @(Field.Style?.Italic==true ? "active" : "")"
-                    @onclick="() => ChangeStyle(s => s.Italic = !s.Italic)"><i>I</i></button>
-            <button class="rd-btn rd-btn--sm @(Field.Style?.Underline==true ? "active" : "")"
-                    @onclick="() => ChangeStyle(s => s.Underline = !s.Underline)"><u>U</u></button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Bold == true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Bold = !s.Bold)">
+                <b>B</b>
+            </button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Italic == true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Italic = !s.Italic)">
+                <i>I</i>
+            </button>
+            <button class="rd-btn rd-btn--sm @(Field.Style?.Underline == true ? "active" : "")"
+                    @onclick="() => ChangeStyle(s => s.Underline = !s.Underline)">
+                <u>U</u>
+            </button>
         </div>
     </PropRow>
     <PropRow Label="Fore color">
@@ -168,33 +174,90 @@
 
         @if (Field.Kind == ElementKind.Image)
         {
-            <PropRow Label="Image">
-                <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                    <div style="display:flex;gap:4px;align-items:center;">
-                        <button class="rd-btn rd-btn--sm rd-btn--primary" @onclick="PickImageFile">
-                            📁 Pick file…
-                        </button>
-                        <span style="font-size:9px;color:var(--rd-text-muted);">
-                            Quality: @_imageQuality%
-                        </span>
+            <PropRow Label="Source">
+                <select class="rd-input rd-input--full"
+                        value="@Field.ImageSourceMode"
+                        @onchange="OnImageSourceModeChange">
+                    <option value="Static">Static (embedded file)</option>
+                    <option value="Expression">Expression (e.g. Fields.Logo)</option>
+                    <option value="Parameter">Parameter (scalar param name)</option>
+                    <option value="DataField">Data Field (column name)</option>
+                </select>
+            </PropRow>
+
+            @if (Field.ImageSourceMode == ImageSourceMode.Static)
+            {
+                <PropRow Label="Image">
+                    <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <button class="rd-btn rd-btn--sm rd-btn--primary" @onclick="PickImageFile">
+                                📁 Pick file…
+                            </button>
+                            <span style="font-size:9px;color:var(--rd-text-muted);">
+                                Quality: @_imageQuality%
+                            </span>
+                        </div>
+                        <input type="range" min="10" max="100" step="5"
+                               value="@_imageQuality"
+                               @oninput="e => _imageQuality = int.Parse(e.Value!.ToString()!)"
+                               title="Image quality" />
+                        @if (!string.IsNullOrWhiteSpace(Field.ImageSrc))
+                        {
+                            <img src="@Field.ImageSrc"
+                                 style="max-width:100%;max-height:48px;object-fit:contain;border:1px solid var(--rd-border);border-radius:2px;" />
+                            <button class="rd-btn rd-btn--xs rd-btn--danger"
+                                    @onclick="() => Change(() => Field.ImageSrc = null)">
+                                ✕ Clear
+                            </button>
+                        }
+                        <InputFile id="@($"image-file-input-{Field.Name}")"
+                                   OnChange="OnImageFileSelected"
+                                   accept="image/*"
+                                   style="display:none" />
                     </div>
-                    <input type="range" min="10" max="100" step="5"
-                           value="@_imageQuality"
-                           @oninput="e => _imageQuality = int.Parse(e.Value!.ToString()!)"
-                           title="Image quality (lower = smaller file size)" />
-                    @if (!string.IsNullOrWhiteSpace(Field.ImageSrc))
-                    {
-                        <img src="@Field.ImageSrc"
-                             style="max-width:100%;max-height:48px;object-fit:contain;border:1px solid var(--rd-border);border-radius:2px;" />
-                        <button class="rd-btn rd-btn--xs rd-btn--danger"
-                                @onclick="() => Change(() => Field.ImageSrc = null)">✕ Clear</button>
-                    }
+                </PropRow>
+            }
+            else
+            {
+                <PropRow Label="@ImageExpressionLabel">
+                    <input class="rd-input rd-input--full"
+                           value="@Field.ImageExpression"
+                           @onchange="e => Change(() => Field.ImageExpression = e.Value?.ToString())"
+                           placeholder="@ImageExpressionPlaceholder" />
+                </PropRow>
+                <div style="font-size:9px;color:var(--rd-text-muted);padding:2px 0 4px;">
+                    @ImageExpressionHint
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Field.ImageSrc))
+                {
+                    <PropRow Label="Fallback">
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <img src="@Field.ImageSrc"
+                                 style="max-height:24px;max-width:60px;object-fit:contain;" />
+                            <button class="rd-btn rd-btn--xs" @onclick="PickImageFile">Change</button>
+                            <button class="rd-btn rd-btn--xs rd-btn--danger"
+                                    @onclick="() => Change(() => Field.ImageSrc = null)">
+                                ✕
+                            </button>
+                        </div>
+                    </PropRow>
                     <InputFile id="@($"image-file-input-{Field.Name}")"
                                OnChange="OnImageFileSelected"
                                accept="image/*"
                                style="display:none" />
-                </div>
-            </PropRow>
+                }
+                else
+                {
+                    <PropRow Label="Fallback">
+                        <button class="rd-btn rd-btn--xs" @onclick="PickImageFile">📁 Set fallback image</button>
+                        <InputFile id="@($"image-file-input-{Field.Name}")"
+                                   OnChange="OnImageFileSelected"
+                                   accept="image/*"
+                                   style="display:none" />
+                    </PropRow>
+                }
+            }
+
             <PropRow Label="Stretch">
                 <select class="rd-input rd-input--full"
                         value="@Field.ImageStretch"
@@ -231,13 +294,42 @@
     <!-- Delete button -->
     <div class="rd-props__footer">
         <button class="rd-btn rd-btn--danger rd-btn--full"
-                @onclick="DeleteField">🗑 Delete Field</button>
+                @onclick="DeleteField">
+            🗑 Delete Field
+        </button>
     </div>
 </div>
 
 @code {
     [Parameter, EditorRequired] public SectionDefinition Section { get; set; } = default!;
-    [Parameter, EditorRequired] public FieldElement       Field   { get; set; } = default!;
+    [Parameter, EditorRequired] public FieldElement Field { get; set; } = default!;
+
+    private string ImageExpressionLabel => Field.ImageSourceMode switch
+    {
+        ImageSourceMode.Expression => "Expression",
+        ImageSourceMode.Parameter => "Param name",
+        ImageSourceMode.DataField => "Column name",
+        _ => "Source",
+    };
+
+    private string ImageExpressionPlaceholder => Field.ImageSourceMode switch
+    {
+        ImageSourceMode.Expression => "e.g. Fields.Logo",
+        ImageSourceMode.Parameter => "e.g. CompanyLogo",
+        ImageSourceMode.DataField => "e.g. ProductImage",
+        _ => "",
+    };
+
+    private string ImageExpressionHint => Field.ImageSourceMode switch
+    {
+        ImageSourceMode.Expression => "Expression must return a data URI, base64 string, or URL.",
+        ImageSourceMode.Parameter => "Pass image as byte[] or base64 string in report parameters.",
+        ImageSourceMode.DataField => "Column must contain byte[] or base64 string per row.",
+        _ => "",
+    };
+
+    private void OnImageSourceModeChange(ChangeEventArgs e)
+        => Change(() => Field.ImageSourceMode = Enum.Parse<ImageSourceMode>(e.Value!.ToString()!));
 
     private int _imageQuality = 80;
 
@@ -252,9 +344,9 @@
         var maxBytes = 10 * 1024 * 1024; // 10MB read limit
         var buf = new byte[Math.Min(file.Size, maxBytes)];
         await using var stream = file.OpenReadStream(maxBytes);
-        var read   = await stream.ReadAsync(buf);
+        var read = await stream.ReadAsync(buf);
         var b64raw = Convert.ToBase64String(buf, 0, read);
-        var mime   = file.ContentType;
+        var mime = file.ContentType;
         var rawUri = $"data:{mime};base64,{b64raw}";
 
         // Compress via browser canvas at chosen quality
@@ -308,15 +400,15 @@
     {
         return (v, h) switch
         {
-            (FieldVerticalAlign.Top,    FieldAlignment.Left)   => "↖",
-            (FieldVerticalAlign.Top,    FieldAlignment.Center) => "↑",
-            (FieldVerticalAlign.Top,    FieldAlignment.Right)  => "↗",
-            (FieldVerticalAlign.Middle, FieldAlignment.Left)   => "←",
+            (FieldVerticalAlign.Top, FieldAlignment.Left) => "↖",
+            (FieldVerticalAlign.Top, FieldAlignment.Center) => "↑",
+            (FieldVerticalAlign.Top, FieldAlignment.Right) => "↗",
+            (FieldVerticalAlign.Middle, FieldAlignment.Left) => "←",
             (FieldVerticalAlign.Middle, FieldAlignment.Center) => "·",
-            (FieldVerticalAlign.Middle, FieldAlignment.Right)  => "→",
-            (FieldVerticalAlign.Bottom, FieldAlignment.Left)   => "↙",
+            (FieldVerticalAlign.Middle, FieldAlignment.Right) => "→",
+            (FieldVerticalAlign.Bottom, FieldAlignment.Left) => "↙",
             (FieldVerticalAlign.Bottom, FieldAlignment.Center) => "↓",
-            (FieldVerticalAlign.Bottom, FieldAlignment.Right)  => "↘",
+            (FieldVerticalAlign.Bottom, FieldAlignment.Right) => "↘",
             _ => "·"
         };
     }
