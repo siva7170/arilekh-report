@@ -1,5 +1,7 @@
 # Arilekh Report Engine
 
+Arilekh Reporting Platform is a comprehensive reporting framework for .NET and Angular applications, providing report design, generation, rendering, viewing, and export capabilities for enterprise-grade business solutions.
+
 ## .NET
 
 ### Install Package
