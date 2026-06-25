@@ -1,0 +1,274 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (_open)
+{
+    <!-- Modal backdrop -->
+    <div class="rd-modal-backdrop" @onclick="Close"></div>
+
+    <div class="rd-modal" @onclick:stopPropagation="true">
+        <div class="rd-modal__header">
+            <span>📋 Schema Editor</span>
+            <button class="rd-btn rd-btn--icon" @onclick="Close">✕</button>
+        </div>
+
+        <div class="rd-modal__body">
+
+            <!-- Left: data source list -->
+            <div class="rd-schema__sources">
+                <div class="rd-schema__panel-title">
+                    Data Sources
+                    <button class="rd-btn rd-btn--xs rd-btn--primary" @onclick="AddDataSource">+</button>
+                </div>
+                @foreach (var ds in State.Report.DataSources)
+                {
+                    <div class="rd-schema__ds-item @(_selectedDs == ds ? "active" : "")"
+                         @onclick="() => _selectedDs = ds">
+                        <span class="rd-schema__ds-icon">@KindIcon(ds.Kind)</span>
+                        <span class="rd-schema__ds-name">@ds.Name</span>
+                        <button class="rd-btn rd-btn--icon rd-btn--danger rd-btn--xs"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => RemoveDataSource(ds)">✕</button>
+                    </div>
+                }
+            </div>
+
+            <!-- Right: selected data source editor -->
+            <div class="rd-schema__editor">
+                @if (_selectedDs is not null)
+                {
+                    <div class="rd-schema__panel-title">@_selectedDs.Name</div>
+
+                    <!-- Kind selector -->
+                    <div class="rd-schema__row">
+                        <span class="rd-schema__lbl">Kind</span>
+                        <select class="rd-select" value="@_selectedDs.Kind"
+                                @onchange="OnKindChange">
+                            <option value="DataTable">DataTable — flat row/column table</option>
+                            <option value="DataSet">DataSet — multiple tables</option>
+                            <option value="ScalarField">Scalar — single value</option>
+                        </select>
+                    </div>
+
+                    <div class="rd-schema__row">
+                        <span class="rd-schema__lbl">Name</span>
+                        <input class="rd-input rd-input--full"
+                               value="@_selectedDs.Name"
+                               @onchange="e => Change(() => _selectedDs.Name = e.Value?.ToString() ?? _selectedDs.Name)" />
+                    </div>
+
+                    @if (_selectedDs.Kind == DataSourceKind.ScalarField)
+                    {
+                        <div class="rd-schema__row">
+                            <span class="rd-schema__lbl">Value type</span>
+                            <select class="rd-select" value="@_selectedDs.ScalarType"
+                                    @onchange="e => Change(() => _selectedDs.ScalarType = Enum.Parse<FieldDataType>(e.Value!.ToString()!))">
+                                @foreach (var t in Enum.GetValues<FieldDataType>())
+                                {
+                                    <option value="@t">@t</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Fields table -->
+                        <div class="rd-schema__panel-title" style="margin-top:8px;">
+                            Fields
+                            <button class="rd-btn rd-btn--xs rd-btn--primary" @onclick="AddField">+ Field</button>
+                        </div>
+
+                        <table class="rd-schema__table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Nullable</th>
+                                    <th>Caption</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var field in _selectedDs.Fields)
+                                {
+                                    var f = field;
+                                    <tr>
+                                        <td><input class="rd-input rd-input--full"
+                                                   value="@f.Name"
+                                                   @onchange="e => Change(() => f.Name = e.Value?.ToString() ?? f.Name)" /></td>
+                                        <td>
+                                            <select class="rd-select" value="@f.DataType"
+                                                    @onchange="e => Change(() => f.DataType = Enum.Parse<FieldDataType>(e.Value!.ToString()!))">
+                                                @foreach (var t in Enum.GetValues<FieldDataType>())
+                                                {
+                                                    <option value="@t">@t</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td style="text-align:center">
+                                            <input type="checkbox" checked="@f.Nullable"
+                                                   @onchange="e => Change(() => f.Nullable = (bool)e.Value!)" />
+                                        </td>
+                                        <td><input class="rd-input rd-input--full"
+                                                   value="@f.Caption"
+                                                   @onchange="e => Change(() => f.Caption = e.Value?.ToString())"
+                                                   placeholder="Display label" /></td>
+                                        <td><button class="rd-btn rd-btn--icon rd-btn--danger rd-btn--xs"
+                                                    @onclick="() => RemoveField(f)">✕</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <!-- Save schema / load data buttons -->
+                    <div class="rd-schema__actions">
+                        <button class="rd-btn rd-btn--sm rd-btn--primary" @onclick="SaveSchemaFile">
+                            💾 Save as .rds
+                        </button>
+                        <button class="rd-btn rd-btn--sm" @onclick="LoadSchemaFile">
+                            📂 Load .rds
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="rd-schema__placeholder">
+                        Select or add a data source on the left.
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="rd-modal__footer">
+            <button class="rd-btn rd-btn--primary" @onclick="Close">Done</button>
+        </div>
+    </div>
+
+    <!-- Hidden file input for loading .rds -->
+    <InputFile id="rds-schema-input" OnChange="OnRdsLoaded" accept=".rds,.xml" style="display:none" />
+}
+
+@code {
+    private bool _open;
+    private DataSourceDefinition? _selectedDs;
+
+    public void Open()
+    {
+        _open = true;
+        _selectedDs = State.Report.DataSources.FirstOrDefault();
+        StateHasChanged();
+    }
+
+    private void Close()
+    {
+        _open = false;
+        StateHasChanged();
+    }
+
+    private void AddDataSource()
+    {
+        var ds = new DataSourceDefinition
+        {
+            Name = $"DataSource{State.Report.DataSources.Count + 1}",
+            Kind = DataSourceKind.DataTable
+        };
+        Change(() => State.Report.DataSources.Add(ds));
+        _selectedDs = ds;
+    }
+
+    private void RemoveDataSource(DataSourceDefinition ds)
+    {
+        Change(() => State.Report.DataSources.Remove(ds));
+        if (_selectedDs == ds)
+            _selectedDs = State.Report.DataSources.FirstOrDefault();
+    }
+
+    private void AddField()
+    {
+        if (_selectedDs is null) return;
+        Change(() => _selectedDs.Fields.Add(new DataFieldDescriptor
+        {
+            Name     = $"Field{_selectedDs.Fields.Count + 1}",
+            DataType = FieldDataType.String,
+            Nullable = true,
+        }));
+    }
+
+    private void RemoveField(DataFieldDescriptor f)
+    {
+        if (_selectedDs is null) return;
+        Change(() => _selectedDs.Fields.Remove(f));
+    }
+
+    private void OnKindChange(ChangeEventArgs e)
+        => Change(() => _selectedDs!.Kind = Enum.Parse<DataSourceKind>(e.Value!.ToString()!));
+
+    private void Change(Action action)
+    {
+        action();
+        State.NotifyChanged();
+    }
+
+    private async Task SaveSchemaFile()
+    {
+        if (_selectedDs is null) return;
+        // Serialize the schema fields as a DataSetSchema XML
+        var schema = new DataSetSchema
+        {
+            Name   = _selectedDs.Name,
+            Fields = _selectedDs.Fields,
+        };
+        var xml  = ArilekhReport.Core.XmlReportSerializer.SerializeSchema(schema);
+        var name = (_selectedDs.Name.Trim().Length > 0 ? _selectedDs.Name : "schema") + ".rds";
+        await JS.InvokeVoidAsync("eval",
+            $"(function(){{var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([{System.Text.Json.JsonSerializer.Serialize(xml)}],{{type:'text/xml'}}));a.download={System.Text.Json.JsonSerializer.Serialize(name)};document.body.appendChild(a);a.click();document.body.removeChild(a);}})()");
+    }
+
+    private async Task LoadSchemaFile()
+        => await JS.InvokeVoidAsync("eval", "document.getElementById('rds-schema-input').click()");
+
+    private async Task OnRdsLoaded(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            await using var stream = e.File.OpenReadStream(1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream);
+            var xml    = await reader.ReadToEndAsync();
+            var schema = ArilekhReport.Core.XmlReportSerializer.DeserializeSchema(xml);
+            // Merge fields into selected DS or create new one
+            if (_selectedDs is not null)
+            {
+                Change(() =>
+                {
+                    _selectedDs.Name   = schema.Name;
+                    _selectedDs.Fields = schema.Fields;
+                });
+            }
+            else
+            {
+                var ds = new DataSourceDefinition { Name = schema.Name, Kind = DataSourceKind.DataTable, Fields = schema.Fields };
+                Change(() => State.Report.DataSources.Add(ds));
+                _selectedDs = ds;
+            }
+            State.ShowToast($"Schema '{schema.Name}' loaded", ToastType.Success);
+        }
+        catch (Exception ex)
+        {
+            State.ShowToast($"Load failed: {ex.Message}", ToastType.Error);
+        }
+    }
+
+    private static string KindIcon(DataSourceKind k) => k switch
+    {
+        DataSourceKind.DataSet     => "DS",
+        DataSourceKind.ScalarField => "Fx",
+        _                          => "DT",
+    };
+
+    protected override void OnInitialized() => State.OnChanged += Refresh;
+    private void Refresh() => StateHasChanged();
+    public void Dispose() => State.OnChanged -= Refresh;
+}

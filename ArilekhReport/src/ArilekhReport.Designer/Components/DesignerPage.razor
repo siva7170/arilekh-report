@@ -1,0 +1,379 @@
+@page "/"
+@page "/index.html"
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@inject ClipboardService Clipboard
+@using ArilekhReport.Core
+@using System.Net; 
+@inject IJSRuntime JS
+@inject NavigationManager NavManager
+@implements IDisposable
+@using ArilekhReport.Designer.Helpers
+
+<div class="rd-designer" data-theme="@(State.IsDarkMode ? "dark" : "light")"
+     @onmousemove="OnMouseMove" @onmouseup="OnMouseUp"
+     @onkeydown="OnKeyDown" tabindex="0">
+
+    <!-- ── Toolbar ─────────────────────────────────────────────────── -->
+    <DesignerToolbar />
+
+    <!-- ── Body: palette | canvas | properties ─────────────────────── -->
+    <div class="rd-body">
+
+        @if (State.Mode == DesignerMode.Design)
+        {
+            <!-- Left panel: tabbed (Fields / Sources / Explorer) -->
+            <div class="rd-panel rd-panel--left">
+                <LeftPanel OpenSchemaEditorCallback="() => _schemaEditor?.Open()" />
+            </div>
+
+            <!-- Centre: canvas -->
+            <div class="rd-canvas-scroll" id="canvasScroll"
+                 @onclick="OnCanvasBackgroundClick">
+                <ReportCanvas />
+            </div>
+
+            <!-- Right panel: properties -->
+            <div class="rd-panel rd-panel--right">
+                <PropertiesPanel />
+            </div>
+        }
+        else
+        {
+            <!-- Preview mode: full-width iframe -->
+            <div class="rd-preview-host">
+                <PreviewPanel />
+            </div>
+        }
+
+    </div>
+
+    <!-- ── Schema Editor Dialog ────────────────────────────────────── -->
+    <SchemaEditorDialog @ref="_schemaEditor" />
+
+    <!-- ── Global context menu (rendered at root level, never clipped) ── -->
+    @if (State.ContextMenu.IsVisible)
+    {
+        <!-- Click-away backdrop -->
+        <div style="position:fixed;inset:0;z-index:9998;"
+             @onclick="State.HideContextMenu"
+             @oncontextmenu:preventDefault="true"
+             @oncontextmenu="State.HideContextMenu"></div>
+
+        <div class="rd-context-menu"
+             style="top:@(State.ContextMenu.Y)px;left:@(State.ContextMenu.X)px"
+             @onclick:stopPropagation="true">
+
+            @if (State.ContextMenu.IsFieldMenu)
+            {
+                <div class="rd-context-menu__item" @onclick="CtxCopy">📋 Copy</div>
+                <div class="@($"rd-context-menu__item{(!Clipboard.HasContent ? " rd-context-menu__item--disabled" : "")}")"
+                     @onclick="CtxPaste">
+                    📌 Paste
+                </div>
+                <div class="rd-context-menu__item" @onclick="CtxDuplicate">⧉ Duplicate</div>
+                <div class="rd-context-menu__sep"></div>
+                <div class="rd-context-menu__item rd-context-menu__item--danger"
+                     @onclick="CtxDelete">🗑 Delete</div>
+            }
+            else if (State.ContextMenu.IsSectionMenu)
+            {
+                <div class="@($"rd-context-menu__item{(!Clipboard.HasContent ? " rd-context-menu__item--disabled" : "")}")"
+                     @onclick="CtxPasteIntoSection">
+                    📌 Paste Field Here
+                </div>
+                <div class="rd-context-menu__sep"></div>
+                <div class="rd-context-menu__item rd-context-menu__item--danger"
+                     @onclick="CtxDeleteSection">🗑 Delete Section</div>
+            }
+        </div>
+    }
+
+</div>
+
+@code {
+    // [Parameter]
+    // [SupplyParameterFromQuery(Name = "file")]
+    // public string fileToRead { get; set; } = "";
+
+    // [Parameter]
+    // [SupplyParameterFromQuery(Name = "type")]
+    // public string readFor { get; set; } = "";
+
+
+    // protected override void OnInitialized()
+    // {
+    //     State.OnChanged += OnStateChanged;
+
+    //     if (!String.IsNullOrEmpty(fileToRead))
+    //     {
+    //         string decodedPath = Uri.UnescapeDataString(fileToRead);
+
+    //         if (File.Exists(decodedPath))
+    //         {
+    //             var report = XmlReportSerializer.DeserializeReport(File.ReadAllText(decodedPath));
+    //             State.LoadReport(report);
+    //             State.ShowToast("Report loaded from Visual Studio", ToastType.Success);
+    //         }
+    //         else
+    //         {
+    //             State.ShowToast("Report is not found", ToastType.Success);
+    //         }
+
+    //         if (File.Exists("D:\\WorkingArea\\DotNet\\VS2022Plus\\Tools and Apps\\ReportDesigner\\SampleReport.rdx"))
+    //         {
+    //             State.ShowToast("Report loaded from Visual Studio", ToastType.Success);
+    //         }
+    //         else
+    //         {
+    //             State.ShowToast("Report is not found", ToastType.Success);
+    //         }
+
+    //     }
+    // }
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChanged += OnStateChanged;
+
+        // Parse query string – works in both VS WebView2 and standalone browser
+        var uri = new Uri(NavManager.Uri);
+        var query = QueryStringHelper.Parse(uri.Query);
+
+        query.TryGetValue("file", out var file);
+        query.TryGetValue("type", out var type);
+
+        if (!string.IsNullOrEmpty(file))
+        {
+            State.SetHostFilePath(file);
+
+            // Check if we're inside VS WebView2
+            // If yes – VS will push the XML via host-bridge loadContent()
+            // If no  – we're standalone, load directly
+            var isVsHost = false;
+            try
+            {
+                isVsHost = await JS.InvokeAsync<bool>(
+                    "eval", "!!(window.chrome && window.chrome.webview)");
+            }
+            catch { }
+
+            if (!isVsHost)
+            {
+                // Standalone browser mode – file path not accessible,
+                // show hint to use Open button instead
+                State.ShowToast(
+                    "Open a .rdx file using the Open button in the toolbar.",
+                    ToastType.Info, 5000);
+            }
+            // VS host mode: XML arrives via HostBridgeInterop.LoadReportFromHost()
+        }
+    }
+   
+
+    private void OnStateChanged() => StateHasChanged();
+
+    // ── Global mouse-up (ends any drag) ───────────────────────────────
+
+    private void OnMouseUp(MouseEventArgs e)
+    {
+        if (!State.Drag.IsActive) return;
+        State.Drag.Reset();
+        State.NotifyChangedNoMark();
+    }
+
+    // Click on the canvas scroll background (not on a section/field) → deselect all → shows Report Properties
+    private SchemaEditorDialog? _schemaEditor;
+
+    // ── Context menu actions ──────────────────────────────────────────
+
+    private void CtxCopy()
+    {
+        var f = State.ContextMenu.Field;
+        if (f is null) return;
+        Clipboard.Copy(f);
+        State.HideContextMenu();
+        State.ShowToast("Field copied", ToastType.Info, 1200);
+    }
+
+    private void CtxPaste()
+    {
+        var s = State.ContextMenu.Section ?? State.Selection.Section;
+        if (s is null) return;
+        var clone = Clipboard.Paste();
+        if (clone is null) return;
+        UndoRedo.Push("Paste field");
+        s.Fields.Add(clone);
+        State.SelectField(s, clone);
+        State.NotifyChanged();
+        State.HideContextMenu();
+    }
+
+    private void CtxPasteIntoSection()
+    {
+        var s = State.ContextMenu.Section;
+        if (s is null) return;
+        var clone = Clipboard.Paste();
+        if (clone is null) return;
+        UndoRedo.Push("Paste field");
+        s.Fields.Add(clone);
+        State.SelectField(s, clone);
+        State.NotifyChanged();
+        State.HideContextMenu();
+    }
+
+    private void CtxDuplicate()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        Clipboard.Copy(f);
+        var clone = Clipboard.Paste();
+        if (clone is null) return;
+        UndoRedo.Push("Duplicate field");
+        s.Fields.Add(clone);
+        State.SelectField(s, clone);
+        State.NotifyChanged();
+        State.HideContextMenu();
+    }
+
+    private void CtxDelete()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        UndoRedo.Push("Delete field");
+        State.DeleteField(s, f);
+        State.HideContextMenu();
+    }
+
+    private void CtxDeleteSection()
+    {
+        var s = State.ContextMenu.Section;
+        if (s is null) return;
+        UndoRedo.Push("Delete section");
+        State.DeleteSection(s);
+        State.HideContextMenu();
+    }
+
+    // ── Canvas background click ───────────────────────────────────────
+
+    private void OnCanvasBackgroundClick(MouseEventArgs e)
+    {
+        // Only deselect if clicking the scroll container itself, not a child
+        // Blazor doesn't give us the target, so we use a flag set by child stopPropagation
+        if (!_childClickConsumed)
+            State.ClearSelection();
+        _childClickConsumed = false;
+    }
+
+    private bool _childClickConsumed = false;
+
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (!State.Drag.IsActive) return;
+
+        var drag  = State.Drag;
+        var scale = State.PtToPx;
+
+        switch (drag.Mode)
+        {
+            case DragMode.ResizeField when drag.TargetField is not null:
+            {
+                var deltaXPt = (float)(e.ClientX - drag.OffsetX) / scale;
+                var deltaYPt = (float)(e.ClientY - drag.OffsetY) / scale;
+                var newW = drag.ActiveHandle == ResizeHandle.Right  ? drag.OrigWidth  + deltaXPt : drag.TargetField.Width;
+                var newH = drag.ActiveHandle == ResizeHandle.Bottom ? drag.OrigHeight + deltaYPt : drag.TargetField.Height;
+                State.ResizeField(drag.TargetField, newW, newH);
+                break;
+            }
+
+            case DragMode.ResizeSection when drag.TargetSection is not null:
+            {
+                var deltaYPt = (float)(e.ClientY - drag.OffsetY) / scale;
+                var newH = drag.OrigHeight + deltaYPt;
+                State.ResizeSection(drag.TargetSection, newH);
+                break;
+            }
+        }
+    }
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        var ctrl = e.CtrlKey || e.MetaKey;
+
+        switch (e.Key)
+        {
+            case "Escape":
+                State.HideContextMenu();
+                State.ClearSelection();
+                break;
+
+            case "z" when ctrl && !e.ShiftKey: UndoRedo.Undo(); break;
+            case "z" when ctrl &&  e.ShiftKey: UndoRedo.Redo(); break;
+            case "y" when ctrl:                UndoRedo.Redo(); break;
+
+            case "c" when ctrl && State.Selection.HasField:
+            {
+                Clipboard.Copy(State.Selection.Field!);
+                State.ShowToast("Field copied", ToastType.Info, 1200);
+                break;
+            }
+
+            case "v" when ctrl && State.Selection.HasSection:
+            {
+                var clone = Clipboard.Paste();
+                if (clone is not null)
+                {
+                    UndoRedo.Push("Paste field");
+                    State.Selection.Section!.Fields.Add(clone);
+                    State.SelectField(State.Selection.Section, clone);
+                    State.NotifyChanged();
+                }
+                break;
+            }
+
+            case "Delete" or "Backspace" when State.Selection.HasField:
+            {
+                var s = State.Selection.Section!;
+                var f = State.Selection.Field!;
+                UndoRedo.Push("Delete field");
+                State.DeleteField(s, f);
+                break;
+            }
+
+            case "ArrowLeft" or "ArrowRight" or "ArrowUp" or "ArrowDown"
+                when State.Selection.HasField:
+            {
+                float step = e.ShiftKey ? 1f : State.GridSize;
+                float dx = e.Key == "ArrowLeft" ? -step : e.Key == "ArrowRight" ? step : 0;
+                float dy = e.Key == "ArrowUp"   ? -step : e.Key == "ArrowDown"  ? step : 0;
+                if (State.Selection.SelectedFields.Count > 1)
+                {
+                    State.MoveSelectedFields(dx, dy);
+                }
+                else
+                {
+                    var s = State.Selection.Section!;
+                    var f = State.Selection.Field!;
+                    State.MoveField(s, f, f.X + dx, f.Y + dy);
+                }
+                break;
+            }
+
+            case "+" when ctrl: State.ZoomIn();    break;
+            case "-" when ctrl: State.ZoomOut();   break;
+            case "0" when ctrl: State.ZoomReset(); break;
+
+            case "p" when ctrl:
+                e.Repeat = false; // prevent browser print dialog
+                State.SetMode(State.Mode == DesignerMode.Preview
+                    ? DesignerMode.Design : DesignerMode.Preview);
+                break;
+        }
+    }
+
+    public void Dispose() => State.OnChanged -= OnStateChanged;
+}

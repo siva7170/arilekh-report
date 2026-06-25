@@ -77,7 +77,15 @@ import { takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/o
               </div>
             }
           } @else {
-            <div class="arv-left__loading">Loading…</div>
+            @if (api.loading$ | async) {
+              <div class="arv-left__loading">Loading…</div>
+            }
+            @else if ((api.session$ | async) === null){
+              <div class="arv-left__loading">No report loaded...</div>
+            }
+            @else {
+              <div class="arv-left__loading">Error loading report...</div>
+            }
           }
         </div>
       }
@@ -92,106 +100,75 @@ import { takeUntil, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/o
     </div>
   `,
   styles: [`
+    /* Left panel inherits --arv-* from parent .arv-shell */
     .arv-left {
-      width: 200px;
-      flex-shrink: 0;
-      display: flex;
-      flex-direction: column;
+      width: 200px; flex-shrink: 0;
+      display: flex; flex-direction: column;
       background: var(--arv-surface, #2a2a3e);
       border-right: 1px solid var(--arv-border, #3d3d5c);
-      overflow: hidden;
-      height: 100%;
+      overflow: hidden; height: 100%;
     }
     .arv-left__header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
       padding: 8px 10px 4px;
-      font-weight: 700;
-      font-size: 11px;
-      color: var(--arv-text-muted, #888);
-      text-transform: uppercase;
-      flex-shrink: 0;
+      font-weight: 700; font-size: 11px;
+      color: var(--arv-text-muted, #6b7280);
+      text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0;
     }
     .arv-left__badge {
-      font-size: 9px;
-      background: var(--arv-border, #3d3d5c);
-      border-radius: 8px;
-      padding: 1px 6px;
-      color: var(--arv-text, #ccc);
+      font-size: 9px; background: var(--arv-border, #3d3d5c);
+      border-radius: 8px; padding: 1px 6px; color: var(--arv-text, #ccc);
     }
     .arv-left__search {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      flex-shrink: 0;
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 8px; flex-shrink: 0;
     }
     .arv-input {
-      flex: 1;
-      padding: 4px 8px;
+      flex: 1; padding: 4px 8px;
       background: var(--arv-surface2, #313148);
       border: 1px solid var(--arv-border, #3d3d5c);
-      border-radius: 4px;
-      color: var(--arv-text, #ccc);
-      font-size: 11px;
-      outline: none;
-      width: 100%;
-      box-sizing: border-box;
+      border-radius: 4px; color: var(--arv-text, #ccc);
+      font-size: 11px; outline: none;
+      width: 100%; box-sizing: border-box;
     }
     .arv-left__section-title {
-      font-size: 9px;
-      color: var(--arv-text-muted, #888);
-      text-transform: uppercase;
-      padding: 4px 10px 2px;
-      flex-shrink: 0;
+      font-size: 9px; color: var(--arv-text-muted, #888);
+      text-transform: uppercase; padding: 4px 10px 2px; flex-shrink: 0;
     }
-    .arv-left__list {
-      flex: 1;
-      overflow-y: auto;
-      min-height: 0;
-    }
+    .arv-left__list { flex: 1; overflow-y: auto; min-height: 0; }
     .arv-left__loading { padding: 12px; font-size: 11px; color: var(--arv-text-muted, #888); }
+    .arv-left__footer {
+      padding: 6px 10px; font-size: 10px;
+      color: var(--arv-text-muted, #888);
+      border-top: 1px solid var(--arv-border, #3d3d5c);
+      flex-shrink: 0; display: flex; gap: 4px;
+    }
     .arv-bm {
-      display: flex;
-      align-items: flex-start;
-      gap: 6px;
-      padding: 5px 10px;
-      cursor: pointer;
-      font-size: 11px;
-      border-radius: 2px;
-      margin: 1px 4px;
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 5px 10px; cursor: pointer;
+      font-size: 11px; border-radius: 2px; margin: 1px 4px;
     }
     .arv-bm:hover { background: var(--arv-surface2, #313148); }
-    .arv-bm--active { background: rgba(91,142,240,0.15); color: var(--arv-accent, #5b8ef0); }
+    .arv-bm--active {
+      background: rgba(91,142,240,0.15);
+      color: var(--arv-accent, #5b8ef0);
+    }
     .arv-bm__col { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
     .arv-bm__label { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .arv-bm__snippet { font-size: 9px; color: var(--arv-text-muted, #888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .arv-bm__icon { flex-shrink: 0; font-size: 12px; }
     .arv-thumb__box {
-      width: 30px; height: 40px;
-      background: white;
+      width: 30px; height: 40px; background: white;
       border: 1px solid var(--arv-border, #3d3d5c);
       border-radius: 2px;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
     .arv-thumb__num { font-size: 8px; color: #999; }
-    .arv-left__footer {
-      padding: 6px 10px;
-      font-size: 10px;
-      color: var(--arv-text-muted, #888);
-      border-top: 1px solid var(--arv-border, #3d3d5c);
-      flex-shrink: 0;
-      display: flex; gap: 4px;
-    }
     .arv-spinner-sm {
       width: 14px; height: 14px;
       border: 2px solid var(--arv-border, #3d3d5c);
       border-top-color: var(--arv-accent, #5b8ef0);
-      border-radius: 50%;
-      animation: arv-spin 0.7s linear infinite;
-      flex-shrink: 0;
+      border-radius: 50%; animation: arv-spin 0.7s linear infinite; flex-shrink: 0;
     }
     @keyframes arv-spin { to { transform: rotate(360deg); } }
   `]

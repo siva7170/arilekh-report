@@ -1,0 +1,234 @@
+@inject DesignerStateService State
+@inject UndoRedoService UndoRedo
+@inject IJSRuntime JS
+@inject JsInterop JsInterop
+
+<div class="rd-toolbar">
+
+    <!-- File group – hide New/Open in VS hosted (VS manages file lifecycle) -->
+    <div class="rd-toolbar__group">
+        @if (!State.IsVsHosted)
+        {
+            <button class="rd-btn" title="New Report (Ctrl+N)" @onclick="NewReport">
+                <span class="rd-icon">📄</span> New
+            </button>
+            <button class="rd-btn" title="Open .rdx file" @onclick="OpenReport">
+                <span class="rd-icon">📂</span> Open
+            </button>
+        }
+        <button class="rd-btn rd-btn--primary @(State.IsDirty ? "rd-btn--dirty" : "")"
+                title="Save (Ctrl+S)" @onclick="SaveReport">
+            <span class="rd-icon">💾</span> Save
+        </button>
+        <button class="rd-btn" title="Edit Schema / Data Sources" @onclick="OpenSchema">
+            <span class="rd-icon">🗂️</span> Schema
+        </button>
+    </div>
+
+    <div class="rd-toolbar__sep"></div>
+
+    <!-- Undo/redo -->
+    <div class="rd-toolbar__group">
+        <button class="rd-btn" title="Undo (Ctrl+Z)"
+                disabled="@(!UndoRedo.CanUndo)" @onclick="UndoRedo.Undo">
+            <span class="rd-icon">↩️</span>
+        </button>
+        <button class="rd-btn" title="Redo (Ctrl+Y)"
+                disabled="@(!UndoRedo.CanRedo)" @onclick="UndoRedo.Redo">
+            <span class="rd-icon">↪️</span>
+        </button>
+    </div>
+
+    <div class="rd-toolbar__sep"></div>
+
+    <!-- Add section -->
+    <div class="rd-toolbar__group">
+        <span class="rd-toolbar__label">Add section:</span>
+        @foreach (var st in _sectionTypes)
+        {
+            <button class="rd-btn rd-btn--sm" title="Add @st" @onclick="() => AddSection(st)">
+                @SectionLabel(st)
+            </button>
+        }
+    </div>
+
+    <div class="rd-toolbar__sep"></div>
+
+    <!-- Zoom -->
+    <div class="rd-toolbar__group">
+        <button class="rd-btn rd-btn--icon" title="Zoom out" @onclick="State.ZoomOut">−</button>
+        <span class="rd-toolbar__zoom">@((int)(State.Zoom * 100))%</span>
+        <button class="rd-btn rd-btn--icon" title="Zoom in" @onclick="State.ZoomIn">+</button>
+        <button class="rd-btn rd-btn--sm" title="Reset zoom" @onclick="State.ZoomReset">1:1</button>
+    </div>
+
+    <div class="rd-toolbar__sep"></div>
+
+    <!-- Grid / ruler toggles -->
+    <div class="rd-toolbar__group">
+        <button class="rd-btn rd-btn--toggle @(State.SnapToGrid ? "active" : "")"
+                title="Snap to grid" @onclick="State.ToggleSnap">
+            <span class="rd-icon">⊞</span> Snap
+        </button>
+        <button class="rd-btn rd-btn--toggle @(State.ShowRuler ? "active" : "")"
+                title="Show ruler" @onclick="State.ToggleRuler">
+            <span class="rd-icon">📏</span> Ruler
+        </button>
+    </div>
+
+    <div class="rd-toolbar__sep"></div>
+
+    <!-- Export – hide in VS hosted (VS has its own export flow) -->
+    @if (!State.IsVsHosted)
+    {
+        <ExportPanel />
+        <div class="rd-toolbar__sep"></div>
+    }
+
+    <div class="rd-toolbar__spacer"></div>
+
+    <!-- Theme toggle -->
+    <div class="rd-toolbar__group">
+        <button class="rd-btn rd-btn--toggle" title="Toggle light/dark mode"
+                @onclick="State.ToggleTheme">
+            @(State.IsDarkMode ? "☀️" : "🌙")
+        </button>
+        <a class="rd-btn" href="/viewer" title="Open Report Viewer">
+            🔍 View Report
+        </a>
+    </div>
+
+    <!-- Mode switch -->
+    <div class="rd-toolbar__group">
+        <button class="rd-btn rd-btn--mode @(State.Mode == DesignerMode.Design ? "active" : "")"
+                @onclick="() => State.SetMode(DesignerMode.Design)">
+            ✏️ Design
+        </button>
+        <button class="rd-btn rd-btn--mode @(State.Mode == DesignerMode.Preview ? "active" : "")"
+                @onclick="() => State.SetMode(DesignerMode.Preview)">
+            👁️ Preview
+        </button>
+    </div>
+
+    <!-- Report name indicator -->
+    <div class="rd-toolbar__name">
+        @State.Report.Name @(State.IsDirty ? "●" : "")
+    </div>
+
+</div>
+
+<!-- File input (hidden – triggered programmatically) -->
+<InputFile id="rdx-file-input" OnChange="OnRdxFileSelected" accept=".rdx,.xml" style="display:none" />
+<InputFile id="rds-file-input" OnChange="OnRdsFileSelected" accept=".rds,.xml" style="display:none" />
+
+@code {
+    private static readonly SectionType[] _sectionTypes =
+    [
+        SectionType.ReportHeader, SectionType.PageHeader, SectionType.GroupHeader,
+        SectionType.Detail, SectionType.GroupFooter, SectionType.PageFooter,
+        SectionType.ReportFooter
+    ];
+
+    private async Task NewReport()
+    {
+        if (State.IsDirty)
+        {
+            var ok = await JS.InvokeAsync<bool>("confirm", "Unsaved changes. Create new report?");
+            if (!ok) return;
+        }
+        State.NewReport();
+    }
+
+    private async Task OpenReport()
+        => await JS.InvokeVoidAsync("eval",
+            "document.getElementById('rdx-file-input').click()");
+
+    private async Task OpenSchema()
+        => await JS.InvokeVoidAsync("eval",
+            "document.getElementById('rds-file-input').click()");
+
+    // private async Task SaveReport()
+    // {
+    //     var xml      = ArilekhReport.Core.XmlReportSerializer.SerializeReport(State.Report);
+    //     var fileName = (State.FilePath is not null
+    //         ? System.IO.Path.GetFileName(State.FilePath)
+    //         : State.Report.Name) + ".rdx";
+
+    //     await JS.InvokeVoidAsync("rdDesigner.saveFile", fileName, xml);
+    //     State.MarkSaved();
+    //     State.ShowToast($"Saved {fileName}", ToastType.Success);
+    // }
+
+    private async Task SaveReport()
+    {
+        var xml = State.GetReportXml();
+
+        if (State.IsVsHosted)
+        {
+            // Running inside VS WebView2 – post save message to host via JS module
+            await JsInterop.NotifyHostSaveAsync(xml);
+            // MarkSaved() called by OnSavedByHost when VS confirms
+        }
+        else
+        {
+            // Standalone browser – trigger file download via JS module
+            var fileName = (string.IsNullOrWhiteSpace(State.Report.Name)
+                ? "report" : State.Report.Name) + ".rdx";
+            await JsInterop.SaveFileAsync(fileName, xml);
+            State.MarkSaved();
+            State.ShowToast($"Saved {fileName}", ToastType.Success);
+        }
+    }
+
+    private async Task OnRdxFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream);
+            var xml          = await reader.ReadToEndAsync();
+            var report       = ArilekhReport.Core.XmlReportSerializer.DeserializeReport(xml);
+            State.LoadReport(report, e.File.Name);
+            State.ShowToast($"Opened {e.File.Name}", ToastType.Success);
+        }
+        catch (Exception ex)
+        {
+            State.ShowToast($"Error: {ex.Message}", ToastType.Error);
+        }
+    }
+
+    private async Task OnRdsFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream);
+            var xml          = await reader.ReadToEndAsync();
+            var schema       = ArilekhReport.Core.XmlReportSerializer.DeserializeSchema(xml);
+            State.LoadSchema(schema);
+            State.ShowToast($"Schema loaded: {schema.Name}", ToastType.Success);
+        }
+        catch (Exception ex)
+        {
+            State.ShowToast($"Error: {ex.Message}", ToastType.Error);
+        }
+    }
+
+    private void AddSection(SectionType type)
+    {
+        UndoRedo.Push($"Add {type}");
+        State.AddSection(type);
+    }
+
+    private static string SectionLabel(SectionType t) => t switch
+    {
+        SectionType.ReportHeader => "RH",
+        SectionType.PageHeader   => "PH",
+        SectionType.GroupHeader  => "GH",
+        SectionType.Detail       => "Det",
+        SectionType.GroupFooter  => "GF",
+        SectionType.PageFooter   => "PF",
+        SectionType.ReportFooter => "RF",
+        _ => t.ToString()
+    };
+}

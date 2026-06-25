@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, BehaviorSubject, Subject } from 'rxjs';
 import { tap } from 'rxjs/operators';
+import { IReportViewer } from '../interfaces/report-viewer-interface';
 
 // ── DTOs matching the .NET API ─────────────────────────────────────────────
 
@@ -107,6 +108,12 @@ export class ReportViewerApiService {
   readonly error$      = this._error.asObservable();
   readonly navigateTo$ = this._navigateTo$.asObservable();
 
+  private provider!: IReportViewer;
+
+  setProvider(provider: IReportViewer) {
+    this.provider = provider;
+  }
+
   // ── Configuration ──────────────────────────────────────────────────────────
 
   configure(apiBaseUrl: string): void {
@@ -129,6 +136,97 @@ export class ReportViewerApiService {
     return this._session.value?.pageHeightPt ?? 842;
   }
 
+  setLoading(loading: boolean): void {
+    this._loading.next(loading);
+  }
+
+  // ── Load a pre-rendered session (server generated the GUID) ─────────────────
+
+  /**
+   * Tell the viewer to use a session that was already rendered server-side.
+   * Your Angular code calls this with the GUID returned by your API controller
+   * (which called ReportSessionService.StoreDocument or render-server endpoint).
+   *
+   * Example:
+   *   // In your form submit handler:
+   *   myApi.generateReport(formData).subscribe(({ sessionId }) => {
+   *     reportViewer.loadSession(sessionId);
+   *   });
+   */
+  loadSession(sessionId: string): Observable<RenderResponse> {
+    this._loading.next(true);
+    this._error.next(null);
+    this._pageCache.clear();
+    this._session.next(null);
+
+    // return this.http
+    //   .get<RenderResponse>(`${this.baseUrl}/api/reports/${sessionId}/info`)
+    //   .pipe(
+    //     tap({
+    //       next:  r => { this._session.next(r); this._loading.next(false); },
+    //       error: e => {
+    //         this._error.next(e?.error?.error ?? 'Session not found or expired');
+    //         this._loading.next(false);
+    //       }
+    //     })
+    //   );
+    return this.provider.loadSession(sessionId)
+      .pipe(
+        tap({
+          next:  r => { this._session.next(r); this._loading.next(false); },
+          error: e => {
+            this._error.next(e?.error?.error ?? 'Session not found or expired');
+            this._loading.next(false);
+          }
+        })
+      );
+  }
+
+  /**
+   * Render server-side using a registered IServerDataProvider key.
+   * The API resolves data from your database — Angular never sees the raw data.
+   *
+   * Example:
+   *   reportViewer.renderServer({
+   *     reportXml: this.rdxXml,
+   *     dataProviderKey: 'SalesReport',
+   *     parameters: { DateFrom: '2026-01-01', DateTo: '2026-12-31' }
+   *   }).subscribe();
+   */
+  renderServer(req: {
+    reportXml: string;
+    dataProviderKey: string;
+    parameters?: Record<string, unknown>;
+    ttlMinutes?: number;
+  }): Observable<RenderResponse> {
+    this._loading.next(true);
+    this._error.next(null);
+    this._pageCache.clear();
+    this._session.next(null);
+
+    // return this.http
+    //   .post<RenderResponse>(`${this.baseUrl}/api/reports/render-server`, req)
+    //   .pipe(
+    //     tap({
+    //       next:  r => { this._session.next(r); this._loading.next(false); },
+    //       error: e => {
+    //         this._error.next(e?.error?.error ?? 'Server render failed');
+    //         this._loading.next(false);
+    //       }
+    //     })
+    //   );
+    return this.provider.renderServer(req)
+      .pipe(
+        tap({
+          next:  r => { this._session.next(r); this._loading.next(false); },
+          error: e => {
+            this._error.next(e?.error?.error ?? 'Server render failed');
+            this._loading.next(false);
+          }
+        })
+      );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   constructor(private http: HttpClient) {}
@@ -139,8 +237,18 @@ export class ReportViewerApiService {
     this._pageCache.clear();
     this._session.next(null);
 
-    return this.http
-      .post<RenderResponse>(`${this.baseUrl}/api/reports/render`, req)
+    // return this.http
+    //   .post<RenderResponse>(`${this.baseUrl}/api/reports/render`, req)
+    //   .pipe(
+    //     tap({
+    //       next:  r => { this._session.next(r); this._loading.next(false); },
+    //       error: e => {
+    //         this._error.next(e?.error?.error ?? 'Render failed');
+    //         this._loading.next(false);
+    //       }
+    //     })
+    //   );
+    return this.provider.render(req)
       .pipe(
         tap({
           next:  r => { this._session.next(r); this._loading.next(false); },
@@ -164,9 +272,12 @@ export class ReportViewerApiService {
       return new Observable(o => { o.next(cached); o.complete(); });
     }
 
-    return this.http
-      .get<PageResponse>(`${this.baseUrl}/api/reports/${id}/pages/${pageNumber}`)
-      .pipe(tap(p => this._pageCache.set(pageNumber, p)));
+    // return this.http
+    //   .get<PageResponse>(`${this.baseUrl}/api/reports/${id}/pages/${pageNumber}`)
+    //   .pipe(tap(p => this._pageCache.set(pageNumber, p)));
+
+    return this.provider.getPage(id, pageNumber)
+            .pipe(tap(p => this._pageCache.set(pageNumber, p)));
   }
 
   getPageRange(from: number, to: number): Observable<PageResponse[]> {
@@ -182,7 +293,8 @@ export class ReportViewerApiService {
 
   getThumbnails(): Observable<ThumbnailListResponse> {
     const id = this.sessionId!;
-    return this.http.get<ThumbnailListResponse>(`${this.baseUrl}/api/reports/${id}/thumbnails`);
+    //return this.http.get<ThumbnailListResponse>(`${this.baseUrl}/api/reports/${id}/thumbnails`);
+    return this.provider.getThumbnails(id);
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -190,8 +302,9 @@ export class ReportViewerApiService {
   search(query: string): Observable<SearchResponse> {
     const id     = this.sessionId!;
     const params = new HttpParams().set('q', query);
-    return this.http.get<SearchResponse>(
-      `${this.baseUrl}/api/reports/${id}/search`, { params });
+    // return this.http.get<SearchResponse>(
+    //   `${this.baseUrl}/api/reports/${id}/search`, { params });
+    return this.provider.search(id, params);
   }
 
   // ── Navigation helper ─────────────────────────────────────────────────────

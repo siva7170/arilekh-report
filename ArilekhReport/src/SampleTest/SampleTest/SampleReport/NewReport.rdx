@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="urn:reportdesigner" Name="NewReport" Version="1.0">
+  <PageSetup Size="A4" Orientation="Portrait"
+             MarginTop="36" MarginBottom="36"
+             MarginLeft="36" MarginRight="36" />
+  <DefaultStyle FontFamily="Arial" FontSize="9" ForeColor="#000000" />
+  <DataSources />
+  <Parameters />
+  <Sections>
+    <Section Name="PageHeader1" Type="PageHeader" Height="30">
+      <Fields>
+        <Field Name="Title" Text="Report Title"
+               X="0" Y="6" Width="200" Height="16">
+          <Style Bold="true" FontSize="14" />
+        </Field>
+      </Fields>
+    </Section>
+    <Section Name="Detail1" Type="Detail" Height="18">
+      <Fields />
+    </Section>
+    <Section Name="PageFooter1" Type="PageFooter" Height="20">
+      <Fields>
+        <Field Name="PageNum" Expression="PageNumber()"
+               X="400" Y="4" Width="100" Height="12" Alignment="Right" />
+      </Fields>
+    </Section>
+  </Sections>
+</Report>

@@ -1,0 +1,43 @@
+﻿<Report xmlns="urn:reportdesigner" name="SalesReport">
+  <DataSources>
+    <DataSource name="Orders" schemaRef="Orders.rds" />
+  </DataSources>
+
+  <Sections>
+	  <Section type="ReportHeader" height="40" printOnce="true">
+		  <Field name="StartDate"/>
+		  <Field name="ReportTitle"/>
+	  </Section>
+
+	  <Section type="PageHeader" height="30" repeat="EveryPage">
+		  <Fields>
+			  <Field name="ReportName" text="Sample Report" />
+		  </Fields>
+	  </Section>
+
+    <Section type="GroupHeader" groupField="CustomerName" height="24" />
+
+	  <Section type="Detail" height="20" runningSection="true"
+			   dataSource="Orders">
+		  <Fields>
+			  <Field name="OrderId" left="0"/>
+			  <Field name="CustomerName" left="100"/>
+			  <Field name="Amount" left="200"/>
+			  <Field name="OrderDate" left="300"/>
+		  </Fields>
+	  </Section>
+
+    <Section type="GroupFooter" height="24">
+      <Field name="TotalAmount" expression="Sum(Fields.Amount)"
+             format="Currency" />
+    </Section>
+
+    <Section type="PageFooter" height="30" repeat="EveryPage">
+		<Fields>
+			<Field name="PageNum" expression="PAGENUMBER()" />
+		</Fields>
+    </Section>
+
+    <Section type="ReportFooter" height="40" printOnce="true" />
+  </Sections>
+</Report>

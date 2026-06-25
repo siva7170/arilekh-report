@@ -9,3 +9,4 @@ export type {
   ThumbnailListResponse, PageSummary,
   SearchResponse, SearchHit,
 } from './lib/arilekh-report-viewer/services/report-viewer-api.service';
+export type { IReportViewer } from './lib/arilekh-report-viewer/interfaces/report-viewer-interface';

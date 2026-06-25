@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="ArilekhReport/src/ArilekhReport.Core/ArilekhReport.Core.csproj" Id="1a962c74-8b1d-436e-b310-63cc6fa65013" />
+    <Project Path="ArilekhReport/src/ArilekhReport.Designer/ArilekhReport.Designer.csproj" Id="5bd601d3-0f1d-4f98-b3b7-0b45381792b7" />
+    <Project Path="ArilekhReport/src/ArilekhReport.VsExtension/ArilekhReport.VsExtension.csproj" Id="8e6edf5e-75fe-42ae-b637-4e738158b08a">
+      <Deploy />
+    </Project>
+    <Project Path="ArilekhReport/src/ArilekhReport.WebApi/ArilekhReport.WebApi.csproj" Id="74129374-cc28-4b04-ac4f-79e1fc25c8f5" />
+    <Project Path="ArilekhReport/src/SampleTest/SampleTest/SampleTest.csproj" Id="7881960a-5846-4d09-8739-18bcd61d4258" />
+  </Folder>
+</Solution>

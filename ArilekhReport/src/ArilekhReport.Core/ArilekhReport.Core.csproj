@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	<AssemblyName>ArilekhReport.Core</AssemblyName>
+	<RootNamespace>ArilekhReport.Core</RootNamespace>
+
+	<PackageId>ArilekhReport.Core</PackageId>
+	<Version>1.0.0</Version>
+	<Authors>Siva</Authors>
+	<Company>Depthshow</Company>
+	<Description>ArilekhReport.Core is the core library of the Arilekh Reporting Platform. It provides report definitions, data binding, report processing, rendering infrastructure, and extensible APIs for building enterprise-grade reporting solutions in .NET applications.</Description>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
+	<RepositoryUrl>https://github.com/siva7170/arilekh-report</RepositoryUrl>
+	<PackageProjectUrl>https://github.com/siva7170/arilekh-report</PackageProjectUrl>
+	<PackageTags>
+	    reporting;reports;pdf;excel;viewer;designer
+	</PackageTags>
+	<PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Sample\" />
+  </ItemGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <PackageReference Include="NCalc.Core" Version="6.3.1" />
+    <PackageReference Include="NCalcAsync" Version="6.3.1" />
+    <PackageReference Include="QuestPDF" Version="2026.6.0" />
+    <PackageReference Include="SkiaSharp" Version="4.148.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Sample\SampleReport.rds">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Sample\SampleReport.rdx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

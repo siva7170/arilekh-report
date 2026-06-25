@@ -1,7 +1,9 @@
 import {
   Component, Input, OnInit, OnDestroy, AfterViewInit,
   ViewChild, ViewChildren, QueryList, ElementRef,
-  ChangeDetectionStrategy, ChangeDetectorRef
+  ChangeDetectionStrategy, ChangeDetectorRef,
+  Output,
+  EventEmitter
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -23,10 +25,18 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
   template: `
     <div class="arv-shell" [attr.data-theme]="theme">
 
+      <div class="arv-header-of-arview">
+        <span class="arv-header__title">📄 {{ reportTitle }}</span>
+
+        <div class="arv-header__btn-group">
+           <button class="arv-btn arv-btn--sm" title="Back to Report"
+                (click)="downloadPageImage()">Back to Report</button>
+        </div>
+      </div>
       <!-- ═══ TOOLBAR ════════════════════════════════════════════════ -->
       <div class="arv-toolbar arv-no-print">
 
-        <span class="arv-toolbar__brand">📄 Report Viewer</span>
+        <!-- <span class="arv-toolbar__brand">📄 Report Viewer</span> -->
 
         <!-- Navigation -->
         <div class="arv-nav">
@@ -158,74 +168,94 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
   styles: [`
     :host { display: block; height: 100%; }
 
+    .arv-header-of-arview{
+      padding: 0.25rem;
+      font-size: 12px;
+      display: flex;
+      .arv-header__title{
+        flex-grow: 1;
+      }
+      .arv-header__btn-group{
+        flex-grow: 0;
+      }
+    }
+
+    
+
+    /* ── Dark theme (default) ──────────────────────────────────── */
+    .arv-shell,
+    .arv-shell[data-theme="dark"] {
+      --arv-bg:          #1e1e2e;
+      --arv-surface:     #2a2a3e;
+      --arv-surface2:    #313148;
+      --arv-border:      #3d3d5c;
+      --arv-accent:      #5b8ef0;
+      --arv-text:        #abb2bf;
+      --arv-text-strong: #e0e0f0;
+      --arv-text-muted:  #6b7280;
+    }
+
+    /* ── Light theme ──────────────────────────────────────────── */
+    .arv-shell[data-theme="light"] {
+      --arv-bg:          #f0f0f5;
+      --arv-surface:     #ffffff;
+      --arv-surface2:    #f5f5fa;
+      --arv-border:      #d0d0e0;
+      --arv-accent:      #3b6fd4;
+      --arv-text:        #333344;
+      --arv-text-strong: #111122;
+      --arv-text-muted:  #888899;
+    }
+
     /* Shell */
     .arv-shell {
       display: flex;
       flex-direction: column;
       height: 100%;
-      background: var(--arv-bg, #1e1e2e);
-      color: var(--arv-text, #abb2bf);
+      background: var(--arv-bg);
+      color: var(--arv-text);
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 12px;
-    }
-    [data-theme="light"] {
-      --arv-bg: #f0f0f5;
-      --arv-surface: #ffffff;
-      --arv-surface2: #f5f5fa;
-      --arv-border: #d0d0e0;
-      --arv-accent: #3b6fd4;
-      --arv-text: #333;
-      --arv-text-muted: #888;
     }
 
     /* Toolbar */
     .arv-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 12px;
-      height: 44px;
+      display: flex; align-items: center;
+      gap: 8px; padding: 0 12px; height: 44px;
       flex-shrink: 0;
-      background: var(--arv-surface, #2a2a3e);
-      border-bottom: 1px solid var(--arv-border, #3d3d5c);
+      background: var(--arv-surface);
+      border-bottom: 1px solid var(--arv-border);
       flex-wrap: wrap;
     }
     .arv-toolbar__brand {
       font-weight: 700; font-size: 13px;
-      color: var(--arv-text-strong, #eee);
-      margin-right: 8px;
+      color: var(--arv-text-strong); margin-right: 8px;
     }
 
-    /* Nav */
+    /* Navigation */
     .arv-nav { display: flex; align-items: center; gap: 4px; }
-    .arv-nav__of { font-size: 11px; color: var(--arv-text-muted, #888); }
+    .arv-nav__of { font-size: 11px; color: var(--arv-text-muted); }
     .arv-page-input {
-      width: 52px; text-align: center;
-      padding: 2px 4px;
-      background: var(--arv-surface, #2a2a3e);
-      border: 1px solid var(--arv-border, #3d3d5c);
-      border-radius: 4px;
-      color: var(--arv-text, #ccc);
-      font-size: 12px;
+      width: 52px; text-align: center; padding: 2px 4px;
+      background: var(--arv-surface); border: 1px solid var(--arv-border);
+      border-radius: 4px; color: var(--arv-text-strong); font-size: 12px;
     }
 
     /* Zoom */
     .arv-zoom { display: flex; align-items: center; gap: 4px; }
-    .arv-zoom__val { min-width: 42px; text-align: center; font-size: 11px; color: var(--arv-text-muted, #888); }
+    .arv-zoom__val { min-width: 42px; text-align: center; font-size: 11px; color: var(--arv-text-muted); }
 
     /* Buttons */
     .arv-btn {
       display: inline-flex; align-items: center; gap: 3px;
       padding: 3px 8px;
-      background: var(--arv-surface2, #313148);
-      border: 1px solid var(--arv-border, #3d3d5c);
+      background: var(--arv-surface2);
+      border: 1px solid var(--arv-border);
       border-radius: 4px;
-      color: var(--arv-text, #ccc);
-      font-size: 11px;
-      cursor: pointer;
-      white-space: nowrap;
+      color: var(--arv-text);
+      font-size: 11px; cursor: pointer; white-space: nowrap;
     }
-    .arv-btn:hover { background: var(--arv-border, #3d3d5c); }
+    .arv-btn:hover { background: var(--arv-border); color: var(--arv-text-strong); }
     .arv-btn:disabled { opacity: 0.4; pointer-events: none; }
     .arv-btn--icon { padding: 3px 6px; font-size: 13px; }
     .arv-btn--sm   { padding: 2px 7px; }
@@ -234,7 +264,7 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
     .arv-btn-group .arv-btn:last-child  { border-radius: 0 4px 4px 0; }
 
     /* Status */
-    .arv-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--arv-text-muted, #888); }
+    .arv-status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--arv-text-muted); }
     .arv-status__ok { color: #4caf50; }
 
     /* Body */
@@ -242,45 +272,49 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
 
     /* Canvas scroll */
     .arv-canvas-scroll {
-      flex: 1;
-      overflow: auto;
-      background: var(--arv-bg, #1e1e2e);
+      flex: 1; overflow: auto;
+      background: var(--arv-bg);
       padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      display: flex; flex-direction: column; align-items: center;
     }
 
     /* Page list */
     .arv-page-list { display: flex; flex-direction: column; align-items: center; }
-    .arv-page-wrap { position: relative; display: flex; flex-direction: column; align-items: center; padding-bottom: 16px; }
-    .arv-page-num-label { font-size: 10px; color: var(--arv-text-muted, #888); margin-bottom: 4px; align-self: flex-start; }
+    .arv-page-wrap {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center;
+      padding-bottom: 16px;
+    }
+    .arv-page-num-label { font-size: 10px; color: var(--arv-text-muted); margin-bottom: 4px; align-self: flex-start; }
+
+    /* Page rendered box */
+    arv-page-renderer { display: block; box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+
+    /* Placeholder for pages outside render window */
     .arv-placeholder {
-      background: var(--arv-surface, #2a2a3e);
-      border: 1px dashed var(--arv-border, #3d3d5c);
+      background: var(--arv-surface);
+      border: 1px dashed var(--arv-border);
       display: flex; align-items: center; justify-content: center;
-      color: var(--arv-text-muted, #888); font-size: 11px;
+      color: var(--arv-text-muted); font-size: 11px;
     }
 
-    /* Loading */
-    .arv-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px; color: var(--arv-text-muted, #888); }
+    /* Loading / empty */
+    .arv-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px; color: var(--arv-text-muted); justify-content: center;
+  height: 100%; }
+    .arv-empty   { padding: 60px; text-align: center; color: var(--arv-text-muted); }
     .arv-spinner {
       width: 32px; height: 32px;
-      border: 3px solid var(--arv-border, #3d3d5c);
-      border-top-color: var(--arv-accent, #5b8ef0);
-      border-radius: 50%;
-      animation: arv-spin 0.8s linear infinite;
+      border: 3px solid var(--arv-border);
+      border-top-color: var(--arv-accent);
+      border-radius: 50%; animation: arv-spin 0.8s linear infinite;
     }
     .arv-spinner-sm {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid var(--arv-border, #3d3d5c);
-      border-top-color: var(--arv-accent, #5b8ef0);
-      border-radius: 50%;
-      animation: arv-spin 0.7s linear infinite;
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid var(--arv-border);
+      border-top-color: var(--arv-accent);
+      border-radius: 50%; animation: arv-spin 0.7s linear infinite;
     }
     @keyframes arv-spin { to { transform: rotate(360deg); } }
-    .arv-empty { padding: 60px; text-align: center; color: var(--arv-text-muted, #888); }
   `]
 })
 export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -290,11 +324,16 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
     if (url) this.api.configure(url);
   }
 
+  @Input() reportTitle: string = 'Report Viewer';
+
   /** Light or dark theme */
   @Input() theme: 'light' | 'dark' = 'dark';
 
   /** If provided, render this report on init */
   @Input() renderRequest?: { reportXml: string; data?: any; parameters?: any };
+
+  @Output()
+  scrolled = new EventEmitter<number>();
 
   @ViewChild('scrollEl') scrollEl!: ElementRef<HTMLDivElement>;
   @ViewChildren('pageRenderers') pageRenderers!: QueryList<PageRendererComponent>;
