@@ -1,9 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="ReportDesigner.VsExtension.c4b329eb-4a58-4d0d-84f1-9652de785ed7" Version="1.0" Language="en-US" Publisher="ReportDesigner.VsExtension" />
-    <DisplayName>ReportDesigner.VsExtension</DisplayName>
-    <Description>Empty VSIX Project.</Description>
+    <Identity Id="ArilekhReport.VisualStudio" Version="1.0.0" Language="en-US" Publisher="Depthshow" />
+	<DisplayName>Arilekh Report Designer</DisplayName>
+	<Description xml:space="preserve">
+      Arilekh Report Designer is a Visual Studio extension for designing, editing,
+      previewing, and managing Arilekh reports. It provides an integrated report
+      design environment with support for report layouts, data sources, parameters,
+      expressions, and report preview capabilities for .NET applications.
+    </Description>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.14, )">

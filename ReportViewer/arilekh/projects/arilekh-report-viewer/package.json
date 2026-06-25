@@ -1,6 +1,6 @@
 {
   "name": "arilekh-report-viewer",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Angular report viewer component for the Arilekh Reporting Platform.",
   "keywords": [
     "angular",

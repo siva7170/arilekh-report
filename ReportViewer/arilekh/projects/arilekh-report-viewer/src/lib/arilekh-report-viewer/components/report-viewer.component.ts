@@ -29,8 +29,8 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
         <span class="arv-header__title">📄 {{ reportTitle }}</span>
 
         <div class="arv-header__btn-group">
-           <button class="arv-btn arv-btn--sm" title="Back to Report"
-                (click)="downloadPageImage()">Back to Report</button>
+           <button class="arv-btn arv-btn--sm" title="{{closeBtnText}}"
+                (click)="closeBtnClick()">{{closeBtnText}}</button>
         </div>
       </div>
       <!-- ═══ TOOLBAR ════════════════════════════════════════════════ -->
@@ -174,6 +174,7 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
       display: flex;
       .arv-header__title{
         flex-grow: 1;
+        text-align: left;
       }
       .arv-header__btn-group{
         flex-grow: 0;
@@ -326,6 +327,8 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @Input() reportTitle: string = 'Report Viewer';
 
+  @Input() closeBtnText: string = 'Close';
+
   /** Light or dark theme */
   @Input() theme: 'light' | 'dark' = 'dark';
 
@@ -334,6 +337,9 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @Output()
   scrolled = new EventEmitter<number>();
+
+  @Output()
+  closeBtn = new EventEmitter<void>();
 
   @ViewChild('scrollEl') scrollEl!: ElementRef<HTMLDivElement>;
   @ViewChildren('pageRenderers') pageRenderers!: QueryList<PageRendererComponent>;
@@ -364,6 +370,10 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
         .pipe(takeUntil(this.destroy$))
         .subscribe(() => { this.currentPage = 1; this.cdr.markForCheck(); });
     }
+  }
+
+  closeBtnClick(){
+    this.closeBtn.emit();
   }
 
   ngAfterViewInit(): void {}
