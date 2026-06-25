@@ -1,6 +1,26 @@
 {
   "name": "arilekh-report-viewer",
-  "version": "0.0.1",
+  "version": "1.0.1",
+  "description": "Angular report viewer component for the Arilekh Reporting Platform.",
+  "keywords": [
+    "angular",
+    "report",
+    "reporting",
+    "viewer",
+    "pdf",
+    "dashboard",
+    "arilekh"
+  ],
+  "author": "Siva",
+  "license": "MIT",
+  "homepage": "https://github.com/siva7170/arilekh-report",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/siva7170/arilekh-report"
+  },
+  "bugs": {
+    "url": "https://github.com/siva7170/arilekh-report/issues"
+  },
   "peerDependencies": {
     "@angular/common": "^21.2.0",
     "@angular/core": "^21.2.0"

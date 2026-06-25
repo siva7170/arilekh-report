@@ -4,7 +4,18 @@ ArilekhReport.Core is the core library of the Arilekh Reporting Platform. It pro
 
 ## Install Package
 
-Will be updated soon
+Through .NET CLI
+
+```
+dotnet add package ArilekhReport.Core --version 1.0.0
+```
+
+PMC
+
+```
+NuGet\Install-Package ArilekhReport.Core -Version 1.0.0
+```
+
 
 ## Usage
 
@@ -42,3 +53,9 @@ Console.WriteLine($"Rendered {doc.PageCount} pages in {doc.RenderDuration.TotalM
 ## Methods
 
 Will be updated soon
+
+## How can we use it?
+
+We can use arilekh report to generate report and save into locally or we can render it through the `arilekh-report-viewer` angular library (Currently, we have viewer for angular only).
+
+To integrate Arilekh Report in Angular and .NET web api, please refer `demo-app` in `arilekh-report-viewer` and `ArilekhReport.WebApi`.

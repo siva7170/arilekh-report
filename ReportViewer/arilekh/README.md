@@ -1,59 +1,87 @@
-# Arilekh
+# Arilekh Report Viewer
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.1.4.
+Angular report viewer component for the Arilekh Reporting Platform.
 
-## Development server
-
-To start a local development server, run:
+## Installation
 
 ```bash
-ng serve
+npm install arilekh-report-viewer
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+## Usage
 
-## Code scaffolding
+```typescript
+import { ReportViewerComponent } from 'arilekh-report-viewer';
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+...
 
-```bash
-ng generate component component-name
+@Component({
+  selector: 'app-root',
+  imports: [RouterOutlet, ReportViewerComponent],
+  templateUrl: './app.html',
+  styleUrl: './app.scss'
+})
+export class App implements IReportViewer {
+
+  baseUrl: string = 'http://localhost:2943';
+
+  constructor(private reportApiService: ReportViewerApiService, private http: HttpClient) { }
+    
+  render(req: RenderRequest): Observable<RenderResponse> {
+    return this.http.post<RenderResponse>(`${this.baseUrl}/api/reports/render`, req)
+  }
+  getPage(sessionId: string, pageNumber: number): Observable<PageResponse> {
+    return this.http.get<PageResponse>(`${this.baseUrl}/api/reports/${sessionId}/pages/${pageNumber}`)
+  }
+  getThumbnails(sessionId: string): Observable<ThumbnailListResponse> {
+    return this.http.get<ThumbnailListResponse>(`${this.baseUrl}/api/reports/${sessionId}/thumbnails`);
+  }
+  search(sessionId:string, params: HttpParams): Observable<SearchResponse> {
+    return this.http.get<SearchResponse>(`${this.baseUrl}/api/reports/${sessionId}/search`, { params });
+  }
+  loadSession(sessionId: string): Observable<RenderResponse> {
+    console.log('>>>',this.http);
+    return this.http.get<RenderResponse>(`${this.baseUrl}/api/reports/${sessionId}/info`);
+  }
+  renderServer(req: { reportXml: string; dataProviderKey: string; parameters?: Record<string, unknown>; ttlMinutes?: number; }): Observable<RenderResponse> {
+    return this.http.post<RenderResponse>(`${this.baseUrl}/api/reports/render-server`, req);
+  }
+
+  ngOnInit(): void {
+    this.reportApiService.setProvider(this);
+    this.reportApiService.setLoading(true);
+
+    this.http.post(`${this.baseUrl}/api/reports/generate-sales`,{ Req: 'Test' }).subscribe({        
+      next: (v:any) => {
+        this.reportApiService.loadSession(v.sessionId).subscribe({
+            next: res => {
+                console.log('session loaded', res);
+            },
+            error: err => {
+                console.error(err);
+            }
+        });;
+        console.log('resolve', v, v.sessionId);
+      },
+      error: (e) => {
+        console.log('error', e);
+      }
+    });
+  }
+}
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Features
 
-```bash
-ng generate --help
-```
+- Report viewing
+- Zoom
+- Pagination
+- Export support
 
-## Building
+## API Endpoints
 
-To build the project run:
+In arilekh-report repository, please find `ArilekhReport.WebApi` project for your reference. You can modify the API endpoints as you wish. But, Arilekh Report Viewer expects/passes some parameters from/to API endpoints. Please modify accordingly.
 
-```bash
-ng build
-```
+## Updates
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Document will be upated soon
