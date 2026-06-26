@@ -1,7 +1,10 @@
 <arv-report-viewer
       reportTitle="My Custom Report Viewer"
       theme="light"
-      style="height: 100vh; display: block;">
+      style="height: 100vh; display: block;"
+      closeBtnText="Empty"
+      (closeBtn)="makeItEmpty()"
+      [customBtns]="cBtns">
 </arv-report-viewer>
 
 <!--  

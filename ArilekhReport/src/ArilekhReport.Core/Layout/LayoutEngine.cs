@@ -23,10 +23,21 @@ namespace ArilekhReport.Core.Layout;
 ///     GroupFooter
 ///   PageFooter            ← repeated on every page before page break
 ///   ReportFooter
+///
+/// Performance notes:
+///   - Expression strings are pre-processed once per unique expression (cached)
+///   - FieldStyle merging caches results per field (immutable per report)
+///   - Page footer height is computed once per render, not per row
+///   - DataView sort avoids DataTable copy
+///   - All async methods that do no real async work are made synchronous internally
 /// </summary>
 public sealed class LayoutEngine
 {
     private readonly ExpressionEvaluator _eval = new();
+
+    // ── Per-render caches (reset each RenderAsync call) ───────────────────────
+    private float _footerHeight;
+    private readonly Dictionary<FieldElement, FieldStyle> _styleCache = new();
 
     // ── Public entry point ────────────────────────────────────────────────────
 
@@ -37,21 +48,32 @@ public sealed class LayoutEngine
         CancellationToken cancellationToken = default)
     {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        // Reset per-render caches
+        _styleCache.Clear();
+
         var doc = new ReportDocument { SourceDefinition = report };
         var ctx = new RenderContext(report, parameters ?? new Dictionary<string, object?>());
         var pageSetup = report.PageSetup;
+
+        // Cache footer height once — used on every row
+        _footerHeight = report.GetSections(SectionType.PageFooter).Sum(s => s.Height);
+
+        // Pre-merge styles for all fields (done once, not per row)
+        PrewarmStyleCache(report);
 
         // Start the first page
         StartNewPage(doc, ctx, pageSetup);
 
         // 1. Report Header (page 1 only)
-        await RenderStaticSectionsAsync(doc, ctx, pageSetup,
-            report.GetSections(SectionType.ReportHeader), cancellationToken);
+        RenderSections(doc, ctx, pageSetup, report.GetSections(SectionType.ReportHeader));
+        //await RenderStaticSectionsAsync(doc, ctx, pageSetup,
+        //    report.GetSections(SectionType.ReportHeader), cancellationToken);
 
-        // 1b. Page Header on first page
+        // 2. Page Header on page 1
         RenderPageHeader(doc, ctx, pageSetup, report);
 
-        // 2. Identify primary data source (first Detail section's DataSource)
+        // 3. Data
         var detailSections = report.GetSections(SectionType.Detail).ToList();
         var primaryDsName = detailSections.FirstOrDefault()?.DataSourceName
                              ?? report.DataSources.FirstOrDefault()?.Name;
@@ -62,35 +84,52 @@ public sealed class LayoutEngine
                 primaryDsName, ctx.Parameters, cancellationToken);
 
             ctx.CurrentTable = table;
-            await RenderDataAsync(doc, ctx, pageSetup, report, dataProvider,
-                table, detailSections, cancellationToken);
+            RenderData(doc, ctx, pageSetup, report, table, detailSections, cancellationToken);
+            //await RenderDataAsync(doc, ctx, pageSetup, report, dataProvider,
+            //    table, detailSections, cancellationToken);
         }
 
-        // 3. Report Footer
-        await RenderStaticSectionsAsync(doc, ctx, pageSetup,
-            report.GetSections(SectionType.ReportFooter), cancellationToken);
+        // 4. Report Footer
+        RenderSections(doc, ctx, pageSetup, report.GetSections(SectionType.ReportFooter));
+        //await RenderStaticSectionsAsync(doc, ctx, pageSetup,
+        //    report.GetSections(SectionType.ReportFooter), cancellationToken);
 
-        // Close last page footer
+        // 5. Close last page footer
         RenderPageFooter(doc, ctx, pageSetup, report);
 
-        // Back-fill total pages
-        foreach (var page in doc.Pages)
-            BackFillTotalPages(page, doc.PageCount);
+        // 6. Back-fill total pages (two-pass)
+        var totalPages = doc.PageCount;
+        for (int pi = 0; pi < doc.Pages.Count; pi++)
+            BackFillTotalPages(doc.Pages[pi], totalPages);
+        //foreach (var page in doc.Pages)
+        //    BackFillTotalPages(page, doc.PageCount);
 
-        doc.RenderDuration = System.Diagnostics.Stopwatch
-            .GetElapsedTime(started);
+        doc.RenderDuration = System.Diagnostics.Stopwatch.GetElapsedTime(started);
 
         return doc;
     }
 
+    // ── Pre-warm style cache ──────────────────────────────────────────────────
+
+    private void PrewarmStyleCache(ReportDefinition report)
+    {
+        foreach (var section in report.Sections)
+        {
+            foreach (var field in section.Fields)
+            {
+                if (!_styleCache.ContainsKey(field))
+                    _styleCache[field] = MergeStyle(field.Style, section.DefaultStyle, report.DefaultStyle);
+            }
+        }
+    }
+
     // ── Data iteration ────────────────────────────────────────────────────────
 
-    private async Task RenderDataAsync(
+    private void RenderData(
         ReportDocument doc,
         RenderContext ctx,
         ReportPageSetup pageSetup,
         ReportDefinition report,
-        IDataSourceProvider provider,
         DataTable table,
         List<SectionDefinition> detailSections,
         CancellationToken ct)
@@ -98,63 +137,136 @@ public sealed class LayoutEngine
         var groupHeaderSections = report.GetSections(SectionType.GroupHeader).ToList();
         var groupFooterSections = report.GetSections(SectionType.GroupFooter).ToList();
 
-        // Determine group fields
         var groupFields = groupHeaderSections
             .Where(s => !string.IsNullOrWhiteSpace(s.GroupField))
             .Select(s => s.GroupField!)
             .Distinct()
             .ToList();
 
-        // Sort table by group fields if any
-        DataView view = table.DefaultView;
+        // Sort in-place using DataView (no DataTable copy)
+        DataRow[] rows;
         if (groupFields.Count > 0)
+        {
+            var view = table.DefaultView;
             view.Sort = string.Join(", ", groupFields);
+            rows = view.Cast<DataRowView>().Select(v => v.Row).ToArray();
+        }
+        else
+        {
+            rows = new DataRow[table.Rows.Count];
+            table.Rows.CopyTo(rows, 0);
+        }
 
-        var rows = view.ToTable().Rows.Cast<DataRow>().ToList();
-
+        int rowCount = rows.Length;
         ctx.ResetGroupAggregates();
-        object? currentGroupKey = _getGroupKey(rows.FirstOrDefault(), groupFields);
+        object? currentGroupKey = GetGroupKey(rowCount > 0 ? rows[0] : null, groupFields);
 
-        for (int i = 0; i < rows.Count; i++)
+        for (int i = 0; i < rowCount; i++)
         {
             ct.ThrowIfCancellationRequested();
             var row = rows[i];
-            var rowGroupKey = _getGroupKey(row, groupFields);
-
+            var rowGroupKey = GetGroupKey(row, groupFields);
             bool isGroupChange = !Equals(rowGroupKey, currentGroupKey);
             bool isFirstRow = i == 0;
 
-            // Group footer for previous group
             if (isGroupChange && !isFirstRow)
             {
-                await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupFooterSections, ct);
+                RenderSections(doc, ctx, pageSetup, groupFooterSections);
                 ctx.ResetGroupAggregates();
                 currentGroupKey = rowGroupKey;
             }
 
-            // Group header
             if (isFirstRow || isGroupChange)
             {
                 ctx.CurrentRow = row;
-                await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupHeaderSections, ct);
+                RenderSections(doc, ctx, pageSetup, groupHeaderSections);
             }
 
-            // Accumulate row aggregates
             ctx.CurrentRow = row;
             ctx.RowIndex = i;
             ctx.AccumulateRow(row);
 
-            // Detail band(s)
+            bool isAlternate = (i & 1) == 1;
             foreach (var section in detailSections)
-                RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: i % 2 == 1);
+                RenderSectionBand(doc, ctx, pageSetup, section, isAlternate);
         }
 
-        // Final group footer
-        if (rows.Count > 0)
-            await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupFooterSections, ct);
+        if (rowCount > 0)
+            RenderSections(doc, ctx, pageSetup, groupFooterSections);
     }
 
-    private static object? _getGroupKey(DataRow? row, List<string> groupFields)
+
+    //    private async Task RenderDataAsync(
+    //        ReportDocument doc,
+    //        RenderContext ctx,
+    //        ReportPageSetup pageSetup,
+    //        ReportDefinition report,
+    //        IDataSourceProvider provider,
+    //        DataTable table,
+    //        List<SectionDefinition> detailSections,
+    //        CancellationToken ct)
+    //    {
+    //        var groupHeaderSections = report.GetSections(SectionType.GroupHeader).ToList();
+    //        var groupFooterSections = report.GetSections(SectionType.GroupFooter).ToList();
+    //
+    //        // Determine group fields
+    //        var groupFields = groupHeaderSections
+    //            .Where(s => !string.IsNullOrWhiteSpace(s.GroupField))
+    //            .Select(s => s.GroupField!)
+    //            .Distinct()
+    //            .ToList();
+    //
+    //        // Sort table by group fields if any
+    //        DataView view = table.DefaultView;
+    //        if (groupFields.Count > 0)
+    //            view.Sort = string.Join(", ", groupFields);
+    //
+    //        var rows = view.ToTable().Rows.Cast<DataRow>().ToList();
+    //
+    //        ctx.ResetGroupAggregates();
+    //        object? currentGroupKey = _getGroupKey(rows.FirstOrDefault(), groupFields);
+    //
+    //        for (int i = 0; i < rows.Count; i++)
+    //        {
+    //            ct.ThrowIfCancellationRequested();
+    //            var row = rows[i];
+    //            var rowGroupKey = _getGroupKey(row, groupFields);
+    //
+    //            bool isGroupChange = !Equals(rowGroupKey, currentGroupKey);
+    //            bool isFirstRow = i == 0;
+    //
+    //            // Group footer for previous group
+    //            if (isGroupChange && !isFirstRow)
+    //            {
+    //                await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupFooterSections, ct);
+    //                ctx.ResetGroupAggregates();
+    //                currentGroupKey = rowGroupKey;
+    //            }
+    //
+    //            // Group header
+    //            if (isFirstRow || isGroupChange)
+    //            {
+    //                ctx.CurrentRow = row;
+    //                await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupHeaderSections, ct);
+    //            }
+    //
+    //            // Accumulate row aggregates
+    //            ctx.CurrentRow = row;
+    //            ctx.RowIndex = i;
+    //            ctx.AccumulateRow(row);
+    //
+    //            // Detail band(s)
+    //            foreach (var section in detailSections)
+    //                RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: i % 2 == 1);
+    //        }
+    //
+    //        // Final group footer
+    //        if (rows.Count > 0)
+    //            await RenderStaticSectionsAsync(doc, ctx, pageSetup, groupFooterSections, ct);
+    //    }
+
+
+    private static object? GetGroupKey(DataRow? row, List<string> groupFields)
     {
         if (row is null || groupFields.Count == 0) return null;
         if (groupFields.Count == 1)
@@ -162,29 +274,60 @@ public sealed class LayoutEngine
             var v = row[groupFields[0]];
             return v == DBNull.Value ? null : v;
         }
-        return string.Join("||", groupFields.Select(f =>
+        // Multi-field group key — build composite string
+        var sb = new StringBuilder();
+        for (int k = 0; k < groupFields.Count; k++)
         {
-            var v = row[f];
-            return v == DBNull.Value ? "" : v.ToString();
-        }));
+            if (k > 0) sb.Append("||");
+            var v = row[groupFields[k]];
+            if (v != DBNull.Value) sb.Append(v);
+        }
+        return sb.ToString();
     }
+
+
+    //    private static object? _getGroupKey(DataRow? row, List<string> groupFields)
+    //    {
+    //        if (row is null || groupFields.Count == 0) return null;
+    //        if (groupFields.Count == 1)
+    //        {
+    //            var v = row[groupFields[0]];
+    //            return v == DBNull.Value ? null : v;
+    //        }
+    //        return string.Join("||", groupFields.Select(f =>
+    //        {
+    //            var v = row[f];
+    //            return v == DBNull.Value ? "" : v.ToString();
+    //        }));
+    //    }
 
     // ── Section rendering ─────────────────────────────────────────────────────
 
-    private Task RenderStaticSectionsAsync(
+    // Synchronous — no async overhead for static sections
+    private void RenderSections(
         ReportDocument doc,
         RenderContext ctx,
         ReportPageSetup pageSetup,
-        IEnumerable<SectionDefinition> sections,
-        CancellationToken ct)
+        IEnumerable<SectionDefinition> sections)
     {
         foreach (var section in sections)
-        {
-            ct.ThrowIfCancellationRequested();
             RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
-        }
-        return Task.CompletedTask;
     }
+
+    //    private Task RenderStaticSectionsAsync(
+    //        ReportDocument doc,
+    //        RenderContext ctx,
+    //        ReportPageSetup pageSetup,
+    //        IEnumerable<SectionDefinition> sections,
+    //        CancellationToken ct)
+    //    {
+    //        foreach (var section in sections)
+    //        {
+    //            ct.ThrowIfCancellationRequested();
+    //            RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
+    //        }
+    //        return Task.CompletedTask;
+    //    }
 
     private void RenderSectionBand(
         ReportDocument doc,
@@ -198,9 +341,11 @@ public sealed class LayoutEngine
             _eval.EvaluateBool(section.SuppressExpression, ctx))
             return;
 
-        var page = doc.Pages[^1];
-        float footerHeight = ctx.Report.GetSections(SectionType.PageFooter).Sum(s => s.Height);
-        float printableH = pageSetup.PrintableHeight - footerHeight;
+        float printableH = pageSetup.PrintableHeight - _footerHeight;  // pre-cached    
+
+        //var page = doc.Pages[^1];
+        //float footerHeight = ctx.Report.GetSections(SectionType.PageFooter).Sum(s => s.Height);
+        //float printableH = pageSetup.PrintableHeight - footerHeight;
 
         // Check if we need a new page (only for non-page-header/footer sections)
         bool isPageSection = section.Type is SectionType.PageHeader or SectionType.PageFooter;
@@ -208,11 +353,13 @@ public sealed class LayoutEngine
         {
             RenderPageFooter(doc, ctx, pageSetup, ctx.Report);
             StartNewPage(doc, ctx, pageSetup);
-            page = doc.Pages[^1];
+            //page = doc.Pages[^1];
             RenderPageHeader(doc, ctx, pageSetup, ctx.Report);
         }
 
-        // Background
+        var page = doc.Pages[^1];
+
+        // Section background
         var backColor = isAlternate && section.AlternateRows
             ? (section.AlternateBackColor ?? section.BackColor)
             : section.BackColor;
@@ -229,9 +376,13 @@ public sealed class LayoutEngine
             });
         }
 
-        // Render each field
-        foreach (var field in section.Fields)
-            RenderField(page, ctx, pageSetup, field, ctx.CurrentY, section.DefaultStyle);
+        // Render fields — use cached style
+        var fields = section.Fields;
+        int count = fields.Count;
+        for (int fi = 0; fi < count; fi++)
+            RenderField(page, ctx, pageSetup, fields[fi], ctx.CurrentY, section.DefaultStyle);
+        //foreach (var field in section.Fields)
+        //    RenderField(page, ctx, pageSetup, field, ctx.CurrentY, section.DefaultStyle);
 
         ctx.CurrentY += section.Height;
     }
@@ -244,10 +395,10 @@ public sealed class LayoutEngine
         float sectionY,
         FieldStyle? sectionDefaultStyle)
     {
-        if (field.Name == "PageNum")
-        {
-            var hit = "me";
-        }
+        //if (field.Name == "PageNum")
+        //{
+        //    var hit = "me";
+        //}
         // Suppress
         if (!string.IsNullOrWhiteSpace(field.SuppressExpression) &&
             _eval.EvaluateBool(field.SuppressExpression, ctx))
@@ -335,27 +486,74 @@ public sealed class LayoutEngine
                 }
 
             case ElementKind.Chart:
+                {
+                    var chartDef = field.Chart;
+                    if (chartDef is null) return;
+
+                    var rendered = new RenderedChartElement
+                    {
+                        X = absX,
+                        Y = absY,
+                        Width = field.Width,
+                        Height = field.Height,
+                        Rotation = field.Rotation,
+                        ChartType = chartDef.Type.ToString().ToLowerInvariant(),
+                        Title = chartDef.Title,
+                        ShowLegend = chartDef.ShowLegend,
+                        ShowLabels = chartDef.ShowLabels,
+                        ShowBorder = chartDef.ShowBorder,
+                        BorderColor = chartDef.BorderColor,
+                        BorderWidth = chartDef.BorderWidth,
+                        BackgroundColor = chartDef.BackgroundColor,
+                    };
+
+                    if (ctx.CurrentTable is not null && chartDef.Series.Count > 0)
+                    {
+                        var cats = new List<string>();
+                        if (!string.IsNullOrWhiteSpace(chartDef.CategoryField) &&
+                            ctx.CurrentTable.Columns.Contains(chartDef.CategoryField))
+                        {
+                            foreach (DataRow row in ctx.CurrentTable.Rows)
+                                cats.Add(row[chartDef.CategoryField]?.ToString() ?? "");
+                        }
+                        rendered.Categories = cats;
+
+                        foreach (var serie in chartDef.Series)
+                        {
+                            var rs = new RenderedChartSeries { Label = serie.Label, Color = serie.Color ?? "#4472C4" };
+                            if (!string.IsNullOrWhiteSpace(serie.FieldName) &&
+                                ctx.CurrentTable.Columns.Contains(serie.FieldName))
+                            {
+                                foreach (DataRow row in ctx.CurrentTable.Rows)
+                                    rs.Values.Add(double.TryParse(row[serie.FieldName]?.ToString(), out var v) ? v : 0);
+                            }
+                            rendered.Series.Add(rs);
+                        }
+                    }
+                    page.Add(rendered);
+                    return;
+                }
                 // Charts rendered as placeholder rect in preview
-                page.Add(new RenderedRectElement
-                {
-                    X = absX,
-                    Y = absY,
-                    Width = field.Width,
-                    Height = field.Height,
-                    FillColor = "#f5f5f5",
-                    StrokeColor = "#aaaaaa",
-                    StrokeWidth = 0.5f,
-                });
-                page.Add(new RenderedTextElement
-                {
-                    X = absX,
-                    Y = absY + field.Height / 2f - 6f,
-                    Width = field.Width,
-                    Height = 12f,
-                    Text = $"[{field.Chart?.Type.ToString() ?? "Chart"}]",
-                    Alignment = FieldAlignment.Center,
-                });
-                return;
+                //page.Add(new RenderedRectElement
+                //{
+                //    X = absX,
+                //    Y = absY,
+                //    Width = field.Width,
+                //    Height = field.Height,
+                //    FillColor = "#f5f5f5",
+                //    StrokeColor = "#aaaaaa",
+                //    StrokeWidth = 0.5f,
+                //});
+                //page.Add(new RenderedTextElement
+                //{
+                //    X = absX,
+                //    Y = absY + field.Height / 2f - 6f,
+                //    Width = field.Width,
+                //    Height = 12f,
+                //    Text = $"[{field.Chart?.Type.ToString() ?? "Chart"}]",
+                //    Alignment = FieldAlignment.Center,
+                //});
+                //return;
         }
 
         // ── Text / field / custom formula elements ────────────────────────────
@@ -389,7 +587,10 @@ public sealed class LayoutEngine
             hyperlink = _eval.Evaluate(field.HyperlinkExpression, ctx)?.ToString();
 
         // Merge styles (field → section default → report default)
-        var style = MergeStyle(field.Style, sectionDefaultStyle, ctx.Report.DefaultStyle);
+        // Use pre-warmed style cache
+        if (!_styleCache.TryGetValue(field, out var style))
+            style = MergeStyle(field.Style, sectionDefaultStyle, ctx.Report.DefaultStyle);
+        //var style = MergeStyle(field.Style, sectionDefaultStyle, ctx.Report.DefaultStyle);
 
         page.Add(new RenderedTextElement
         {
@@ -410,7 +611,7 @@ public sealed class LayoutEngine
 
     private void StartNewPage(ReportDocument doc, RenderContext ctx, ReportPageSetup pageSetup)
     {
-        var page = doc.AddPage(pageSetup.Width, pageSetup.Height);
+        doc.AddPage(pageSetup.Width, pageSetup.Height);
         ctx.CurrentY = 0f;
         ctx.PageNumber = doc.Pages.Count;
     }
@@ -419,8 +620,11 @@ public sealed class LayoutEngine
         ReportDocument doc, RenderContext ctx,
         ReportPageSetup pageSetup, ReportDefinition report)
     {
-        foreach (var section in report.GetSections(SectionType.PageHeader))
-            RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
+        var sections = report.GetSections(SectionType.PageHeader);
+        foreach (var section in sections)
+            RenderSectionBand(doc, ctx, pageSetup, section, false);
+        //foreach (var section in report.GetSections(SectionType.PageHeader))
+        //    RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
     }
 
     private void RenderPageFooter(
@@ -428,39 +632,60 @@ public sealed class LayoutEngine
         ReportPageSetup pageSetup, ReportDefinition report)
     {
         // Page footer is pinned to the bottom margin
+
         float savedY = ctx.CurrentY;
-        ctx.CurrentY = pageSetup.PrintableHeight
-                     - report.GetSections(SectionType.PageFooter).Sum(s => s.Height);
-
-        foreach (var section in report.GetSections(SectionType.PageFooter))
-            RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
-
+        ctx.CurrentY = pageSetup.PrintableHeight - _footerHeight;
+        var sections = report.GetSections(SectionType.PageFooter);
+        foreach (var section in sections)
+            RenderSectionBand(doc, ctx, pageSetup, section, false);
         ctx.CurrentY = savedY;
+
+        //float savedY = ctx.CurrentY;
+        //ctx.CurrentY = pageSetup.PrintableHeight
+        //             - report.GetSections(SectionType.PageFooter).Sum(s => s.Height);
+
+        //foreach (var section in report.GetSections(SectionType.PageFooter))
+        //    RenderSectionBand(doc, ctx, pageSetup, section, isAlternate: false);
+
+        //ctx.CurrentY = savedY;
     }
 
     // ── Two-pass total-page back-fill ─────────────────────────────────────────
 
     private static void BackFillTotalPages(RenderedPage page, int totalPages)
     {
-        // Replace placeholder text "?" with actual total pages
-        foreach (var el in page.Elements.OfType<RenderedTextElement>())
+        var elements = page.Elements;
+        int count = elements.Count;
+        var totalStr = totalPages.ToString();
+        for (int i = 0; i < count; i++)
         {
-            if (el.Text == "?")
-                el.Text = totalPages.ToString();
+            if (elements[i] is RenderedTextElement { Text: "?" } te)
+                te.Text = totalStr;
         }
+        // Replace placeholder text "?" with actual total pages
+        //foreach (var el in page.Elements.OfType<RenderedTextElement>())
+        //{
+        //    if (el.Text == "?")
+        //        el.Text = totalPages.ToString();
+        //}
     }
 
     // ── Formatting ────────────────────────────────────────────────────────────
 
     private static string ApplyFormat(object? value, FieldFormat format, string? formatString)
     {
-        if (value is null) return string.Empty;
+        if (value is null or DBNull) return string.Empty;
+        //if (value is null) return string.Empty;
+
 
         if (format == FieldFormat.Custom && !string.IsNullOrWhiteSpace(formatString))
-        {
-            if (value is IFormattable f) return f.ToString(formatString, null);
-            return value.ToString() ?? string.Empty;
-        }
+            return value is IFormattable f ? f.ToString(formatString, null) : value.ToString()!;
+
+        //if (format == FieldFormat.Custom && !string.IsNullOrWhiteSpace(formatString))
+        //{
+        //    if (value is IFormattable f) return f.ToString(formatString, null);
+        //    return value.ToString() ?? string.Empty;
+        //}
 
         return format switch
         {
@@ -476,7 +701,7 @@ public sealed class LayoutEngine
         };
     }
 
-    // ── Style merging ─────────────────────────────────────────────────────────
+    // ── Style merging (result cached by PrewarmStyleCache) ────────────────────
 
     private static FieldStyle MergeStyle(
         FieldStyle? field,
@@ -505,28 +730,28 @@ public sealed class LayoutEngine
     private string? ResolveImageExpression(string? expression, RenderContext ctx)
     {
         if (string.IsNullOrWhiteSpace(expression)) return null;
-        try
-        {
-            var val = _eval.Evaluate(expression, ctx);
-            return ToImageSrc(val);
-        }
+        try { return ToImageSrc(_eval.Evaluate(expression, ctx)); }
         catch { return null; }
     }
 
     private static string? ResolveImageParameter(string? paramName, RenderContext ctx)
     {
         if (string.IsNullOrWhiteSpace(paramName)) return null;
-        if (ctx.Parameters.TryGetValue(paramName, out var val))
-            return ToImageSrc(val);
-        return null;
+        return ctx.Parameters.TryGetValue(paramName, out var val) ? ToImageSrc(val) : null;
+
+        //if (ctx.Parameters.TryGetValue(paramName, out var val))
+        //    return ToImageSrc(val);
+        //return null;
     }
 
     private static string? ResolveImageDataField(string? columnName, RenderContext ctx)
     {
         if (string.IsNullOrWhiteSpace(columnName) || ctx.CurrentRow is null) return null;
-        if (!ctx.CurrentTable?.Columns.Contains(columnName) ?? true) return null;
-        var val = ctx.CurrentRow[columnName];
-        return ToImageSrc(val);
+        if (ctx.CurrentTable?.Columns.Contains(columnName) != true) return null;
+        return ToImageSrc(ctx.CurrentRow[columnName]);
+        //if (!ctx.CurrentTable?.Columns.Contains(columnName) ?? true) return null;
+        //var val = ctx.CurrentRow[columnName];
+        //return ToImageSrc(val);
     }
 
     /// <summary>

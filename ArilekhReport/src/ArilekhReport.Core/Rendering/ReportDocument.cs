@@ -26,43 +26,65 @@ public abstract class RenderedElement
 /// <summary>A text cell – the most common rendered element.</summary>
 public sealed class RenderedTextElement : RenderedElement
 {
-    public string             Text          { get; set; } = string.Empty;
-    public FieldAlignment     Alignment     { get; set; } = FieldAlignment.Left;
+    public string Text { get; set; } = string.Empty;
+    public FieldAlignment Alignment { get; set; } = FieldAlignment.Left;
     public FieldVerticalAlign VerticalAlign { get; set; } = FieldVerticalAlign.Top;
-    public string?            HyperlinkUrl  { get; set; }
+    public string? HyperlinkUrl { get; set; }
 }
 
 /// <summary>A solid or transparent filled rectangle (used for section backgrounds, borders).</summary>
 public sealed class RenderedRectElement : RenderedElement
 {
-    public string? FillColor   { get; set; }
+    public string? FillColor { get; set; }
     public string? StrokeColor { get; set; }
-    public float   StrokeWidth { get; set; } = 0.5f;
-    public float   BorderRadius { get; set; } = 0f;  // percentage (0=sharp, 50=pill)
+    public float StrokeWidth { get; set; } = 0.5f;
+    public float BorderRadius { get; set; } = 0f;  // percentage (0=sharp, 50=pill)
 }
 
 /// <summary>A rendered line segment.</summary>
 public sealed class RenderedLineElement : RenderedElement
 {
-    public float X2          { get; set; }
-    public float Y2          { get; set; }
+    public float X2 { get; set; }
+    public float Y2 { get; set; }
     public string StrokeColor { get; set; } = "#000000";
-    public float  StrokeWidth { get; set; } = 0.5f;
+    public float StrokeWidth { get; set; } = 0.5f;
 }
 
 /// <summary>A rendered ellipse / circle.</summary>
 public sealed class RenderedEllipseElement : RenderedElement
 {
-    public string? FillColor   { get; set; }
+    public string? FillColor { get; set; }
     public string? StrokeColor { get; set; }
-    public float   StrokeWidth { get; set; } = 0.5f;
+    public float StrokeWidth { get; set; } = 0.5f;
 }
 
 /// <summary>A rendered image.</summary>
 public sealed class RenderedImageElement : RenderedElement
 {
-    public string Src     { get; set; } = string.Empty;
+    public string Src { get; set; } = string.Empty;
     public string Stretch { get; set; } = "contain";  // contain | cover | fill | none
+}
+
+/// <summary>A chart with aggregated series data for client-side SVG rendering.</summary>
+public sealed class RenderedChartElement : RenderedElement
+{
+    public string ChartType { get; set; } = "bar";  // pie | bar | barhorizontal | line
+    public string? Title { get; set; }
+    public bool ShowLegend { get; set; } = true;
+    public bool ShowLabels { get; set; } = true;
+    public bool ShowBorder { get; set; } = true;
+    public string BorderColor { get; set; } = "#cccccc";
+    public float BorderWidth { get; set; } = 1f;
+    public string? BackgroundColor { get; set; }
+    public List<RenderedChartSeries> Series { get; set; } = [];
+    public List<string> Categories { get; set; } = [];
+}
+
+public sealed class RenderedChartSeries
+{
+    public string Label { get; set; } = string.Empty;
+    public string Color { get; set; } = "#4472C4";
+    public List<double> Values { get; set; } = [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

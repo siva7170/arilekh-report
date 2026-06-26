@@ -9,4 +9,6 @@ export type {
   ThumbnailListResponse, PageSummary,
   SearchResponse, SearchHit,
 } from './lib/arilekh-report-viewer/services/report-viewer-api.service';
+export { SafeHtmlPipe } from './lib/arilekh-report-viewer/pipes/safe-html.pipe';
 export type { IReportViewer } from './lib/arilekh-report-viewer/interfaces/report-viewer-interface';
+export type { RvCustomBtns } from './lib/arilekh-report-viewer/interfaces/rv-custom-btns';

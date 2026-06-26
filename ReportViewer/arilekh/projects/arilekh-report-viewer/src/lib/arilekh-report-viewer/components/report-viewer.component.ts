@@ -13,6 +13,7 @@ import { takeUntil, debounceTime } from 'rxjs/operators';
 import { ReportViewerApiService, PageResponse } from '../services/report-viewer-api.service';
 import { PageRendererComponent } from './page-renderer.component';
 import { LeftPanelComponent } from './left-panel.component';
+import { RvCustomBtns } from '../interfaces/rv-custom-btns';
 
 const PT_TO_PX     = 1.333;
 const WINDOW_RADIUS = 5;   // render ±5 pages around current
@@ -76,9 +77,18 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
           <button class="arv-btn arv-btn--sm" title="Print current page" (click)="printCurrent()">🖨 Page</button>
         </div>
 
-        <!-- Download page as image -->
-        <button class="arv-btn arv-btn--sm" title="Download current page as image"
+        @if(enableImageDownload){
+          <!-- Download page as image -->
+          <button class="arv-btn arv-btn--sm" title="Download current page as image"
                 (click)="downloadPageImage()">⬇ Image</button>
+        }
+       
+        @if(customBtns.length>0){
+          @for (cB of customBtns; track cB) {
+             <button class="arv-btn arv-btn--sm" title="{{cB.btnAlt}}"
+                (click)="cB.btnCallback()">{{cB.btnText}}</button>
+          }
+        }
 
         <!-- Status -->
         <div class="arv-status">
@@ -100,10 +110,10 @@ const WINDOW_RADIUS = 5;   // render ±5 pages around current
           (pageSelected)="navigateTo($event)">
         </arv-left-panel>
 
-        <!-- Virtual page list -->
+        <!-- Virtual page list
+             (scroll)="onScroll()"-->
         <div class="arv-canvas-scroll"
-             #scrollEl
-             (scroll)="onScroll()">
+             #scrollEl>
 
           @if (api.loading$ | async) {
             <div class="arv-loading">
@@ -332,8 +342,14 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   /** Light or dark theme */
   @Input() theme: 'light' | 'dark' = 'dark';
 
+  @Input() enableImageDownload: boolean = true;
+
   /** If provided, render this report on init */
   @Input() renderRequest?: { reportXml: string; data?: any; parameters?: any };
+
+  @Input() disableWarning: boolean = false;
+
+  @Input() customBtns: RvCustomBtns[] = [];
 
   @Output()
   scrolled = new EventEmitter<number>();
@@ -347,6 +363,7 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   currentPage = 1;
   scale       = PT_TO_PX;
   pageCache   = new Map<number, PageResponse>();
+  private loadingPages = new Set<number>();
 
   private destroy$  = new Subject<void>();
   private printPage?: number;  // undefined = all, number = single page
@@ -370,13 +387,33 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
         .pipe(takeUntil(this.destroy$))
         .subscribe(() => { this.currentPage = 1; this.cdr.markForCheck(); });
     }
+
+    this.api.empty$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe((emp)=>{
+          if(emp) this.empty();
+        });
+
+
+    const h2c = (window as any).html2canvas;
+    if (h2c) {
+        // Do nothing
+    } else {
+        this.enableImageDownload = false;
+        // Fallback: DOM-to-canvas via browser print screenshot prompt
+        console.log('html2canvas not loaded. Add <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script> to your index.html for image download. Due to this, Image Download is disabled implicitly');
+    }
   }
 
   closeBtnClick(){
     this.closeBtn.emit();
   }
 
-  ngAfterViewInit(): void {}
+  ngAfterViewInit(): void {
+    fromEvent(this.scrollEl.nativeElement, 'scroll')
+      .pipe(debounceTime(50), takeUntil(this.destroy$))
+      .subscribe(() => this.onScroll());
+  }
 
   ngOnDestroy(): void {
     this.destroy$.next();
@@ -401,7 +438,7 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   getPage(p: number): PageResponse | undefined {
-    if (!this.pageCache.has(p)) {
+    if (!this.pageCache.has(p) && !this.loadingPages.has(p)) {
       // Trigger async load
       this.loadPage(p);
       return undefined;
@@ -410,13 +447,27 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private loadPage(p: number): void {
-    if (this.pageCache.has(p)) return;
+    if (this.pageCache.has(p) || this.loadingPages.has(p)) return;
+    this.loadingPages.add(p);
     this.api.getPage(p)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(page => {
+    .pipe(takeUntil(this.destroy$))
+    .subscribe({
+      next: page => {
         this.pageCache.set(p, page);
+        this.loadingPages.delete(p);
         this.cdr.markForCheck();
-      });
+      },
+      error: () => {
+        this.loadingPages.delete(p);  // allow retry on failure
+        this.cdr.markForCheck();
+      }
+    });
+    // this.api.getPage(p)
+    //   .pipe(takeUntil(this.destroy$))
+    //   .subscribe(page => {
+    //     this.pageCache.set(p, page);
+    //     this.cdr.markForCheck();
+    //   });
   }
 
   // Preload window pages whenever currentPage changes
@@ -478,8 +529,16 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   refresh(): void {
     this.pageCache.clear();
+    this.loadingPages.clear();
     this.api.clearCache();
     this.preloadWindow();
+    this.cdr.markForCheck();
+  }
+
+
+  empty(): void {
+    this.pageCache.clear();
+    this.loadingPages.clear();
     this.cdr.markForCheck();
   }
 
@@ -505,22 +564,53 @@ export class ReportViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private ensureAllPagesLoaded(callback: () => void): void {
+      const missing: number[] = [];
+  for (let p = 1; p <= this.api.pageCount; p++) {
+    if (!this.pageCache.has(p) && !this.loadingPages.has(p)) {
+      missing.push(p);
+    }
+  }
+  if (missing.length === 0) {
+    // Wait for any in-flight loads before printing
+    if (this.loadingPages.size === 0) {
+      callback();
+    } else {
+      const check = setInterval(() => {
+        if (this.loadingPages.size === 0) {
+          clearInterval(check);
+          callback();
+        }
+      }, 100);
+    }
+    return;
+  }
+  let loaded = 0;
+  for (const p of missing) {
+    this.loadPage(p);  // reuse loadPage — it has the guard now
+  }
+  const sub = this.cdr.detectChanges(); // or poll loadingPages
+  const check = setInterval(() => {
+    if (missing.every(p => this.pageCache.has(p))) {
+      clearInterval(check);
+      callback();
+    }
+  }, 100);
     // Pre-load remaining pages then print
-    const missing: number[] = [];
-    for (let p = 1; p <= this.api.pageCount; p++) {
-      if (!this.pageCache.has(p)) missing.push(p);
-    }
-    if (missing.length === 0) { callback(); return; }
+    // const missing: number[] = [];
+    // for (let p = 1; p <= this.api.pageCount; p++) {
+    //   if (!this.pageCache.has(p)) missing.push(p);
+    // }
+    // if (missing.length === 0) { callback(); return; }
 
-    let loaded = 0;
-    for (const p of missing) {
-      this.api.getPage(p).pipe(takeUntil(this.destroy$)).subscribe(page => {
-        this.pageCache.set(p, page);
-        loaded++;
-        this.cdr.markForCheck();
-        if (loaded === missing.length) callback();
-      });
-    }
+    // let loaded = 0;
+    // for (const p of missing) {
+    //   this.api.getPage(p).pipe(takeUntil(this.destroy$)).subscribe(page => {
+    //     this.pageCache.set(p, page);
+    //     loaded++;
+    //     this.cdr.markForCheck();
+    //     if (loaded === missing.length) callback();
+    //   });
+    // }
   }
 
   // ── Download page as image ─────────────────────────────────────────────────

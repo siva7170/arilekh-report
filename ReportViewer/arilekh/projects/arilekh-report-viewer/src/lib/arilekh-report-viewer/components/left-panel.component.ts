@@ -224,6 +224,12 @@ export class LeftPanelComponent implements OnInit, OnDestroy {
       },
       error: () => { this.searching = false; this.cdr.markForCheck(); }
     });
+
+    this.api.empty$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe((emp)=>{
+          if(emp) this.empty();
+        });
   }
 
   ngOnDestroy(): void {
@@ -242,6 +248,15 @@ export class LeftPanelComponent implements OnInit, OnDestroy {
 
   onSearchChange(q: string): void {
     this.search$.next(q);
+  }
+
+  empty(){
+    this.thumbnails = undefined;
+    this.searchQuery  = '';
+    this.lastQuery    = '';
+    this.searching    = false;
+    this.searchResults = [];
+    this.cdr.markForCheck();
   }
 
   goTo(page: number): void {

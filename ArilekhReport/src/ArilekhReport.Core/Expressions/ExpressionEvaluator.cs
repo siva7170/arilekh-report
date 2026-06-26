@@ -32,6 +32,17 @@ namespace ArilekhReport.Core.Expressions;
 /// </summary>
 public sealed class ExpressionEvaluator
 {
+    // ── Static caches (shared across all instances and renders) ───────────────
+    //
+    // PreprocessExpression output only depends on the expression string itself
+    // (not on row data), so it is safe to cache globally.
+    //
+    // NCalc Expression objects are NOT thread-safe for parameter injection, so
+    // we do NOT cache Expression instances — only the preprocessed string.
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
+        _preprocessCache = new(StringComparer.Ordinal);
+
     // ── Public entry point ────────────────────────────────────────────────────
 
     /// <summary>
@@ -43,12 +54,22 @@ public sealed class ExpressionEvaluator
         if (string.IsNullOrWhiteSpace(expression))
             return null;
 
+        // Preprocessing is pure — cache it
+        var preprocessed = _preprocessCache.GetOrAdd(expression,
+            static e => PreprocessExpression(e));
+
+        // Fast path: literal string constant
+        if (preprocessed.Length >= 2 &&
+            preprocessed[0] == '\'' &&
+            preprocessed[^1] == '\'')
+            return preprocessed[1..^1];
+
         // Pre-process: replace Fields.Xxx → [Fields.Xxx] tokens that NCalc can handle
-        var preprocessed = PreprocessExpression(expression, ctx);
+        //var preprocessed = PreprocessExpression(expression, ctx);
 
         // If after preprocessing the expression is a literal string constant, return it
-        if (preprocessed.StartsWith("'") && preprocessed.EndsWith("'") && preprocessed.Length >= 2)
-            return preprocessed[1..^1];
+        //if (preprocessed.StartsWith("'") && preprocessed.EndsWith("'") && preprocessed.Length >= 2)
+        //    return preprocessed[1..^1];
 
         try
         {
@@ -249,12 +270,17 @@ public sealed class ExpressionEvaluator
 
     // ── Pre-processing ────────────────────────────────────────────────────────
 
-    private static string PreprocessExpression(string expr, RenderContext ctx)
+    //private static string PreprocessExpression(string expr, RenderContext ctx)
+    private static string PreprocessExpression(string expr)
     {
+        // Replace Fields.XxxYyy → [Fields.XxxYyy]  (NCalc uses [...] for dot-identifiers)
+        // Replace Parameters.XxxYyy similarly
+        var sb = new System.Text.StringBuilder(expr.Length + 8);
+        int i = 0;
         // Replace Fields.XxxYyy with [Fields.XxxYyy]  (NCalc uses [...] for identifiers with dots)
         // Also replace Parameters.XxxYyy similarly
-        var sb = new System.Text.StringBuilder();
-        int i = 0;
+        //var sb = new System.Text.StringBuilder();
+        //int i = 0;
 
         while (i < expr.Length)
         {

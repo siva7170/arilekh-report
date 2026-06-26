@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { ReportViewerApiService, ReportViewerComponent, IReportViewer, PageResponse, RenderRequest, RenderResponse, SearchResponse, ThumbnailListResponse } from 'arilekh-report-viewer';
+import { ReportViewerApiService, ReportViewerComponent, IReportViewer, PageResponse, RenderRequest, RenderResponse, SearchResponse, ThumbnailListResponse, RvCustomBtns } from 'arilekh-report-viewer';
 import { Observable } from 'rxjs';
 
 @Component({
@@ -12,6 +12,8 @@ import { Observable } from 'rxjs';
 })
 export class App implements IReportViewer {
   protected readonly title = signal('demo-app');
+
+  cBtns: RvCustomBtns[] = [];
 
   baseUrl: string = 'http://localhost:2943';
   
@@ -183,7 +185,6 @@ export class App implements IReportViewer {
     return this.http.get<SearchResponse>(`${this.baseUrl}/api/reports/${sessionId}/search`, { params });
   }
   loadSession(sessionId: string): Observable<RenderResponse> {
-    console.log('>>>',this.http);
     return this.http.get<RenderResponse>(`${this.baseUrl}/api/reports/${sessionId}/info`);
   }
   renderServer(req: { reportXml: string; dataProviderKey: string; parameters?: Record<string, unknown>; ttlMinutes?: number; }): Observable<RenderResponse> {
@@ -210,5 +211,19 @@ export class App implements IReportViewer {
         console.log('error', e);
       }
     });
+
+    this.cBtns = <RvCustomBtns[]>[
+      {
+        btnText: "Download Report",
+        btnAlt: "To download report",
+        btnCallback: ()=>{
+          alert('Downloaded');
+        }
+      }
+    ]
+  }
+
+  makeItEmpty(){
+    this.reportApiService.empty();
   }
 }

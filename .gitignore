@@ -362,3 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /ArilekhReport/src/ArilekhReport.VsExtension/DesignerApp
+/ArilekhReport/src/ArilekhReport.WebApi/SampleReport/SampleReport.rds
+/ArilekhReport/src/ArilekhReport.WebApi/SampleReport/SampleReport_11.rds
+/ArilekhReport/src/ArilekhReport.WebApi/SampleReport/SampleReport_11.rdx

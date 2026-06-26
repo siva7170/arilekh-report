@@ -77,6 +77,9 @@ public sealed class HtmlExporter
                 case RenderedImageElement image:
                     RenderImage(sb, image, scale);
                     break;
+                case RenderedChartElement chart:
+                    RenderChart(sb, chart, scale);
+                    break;
             }
         }
 
@@ -98,7 +101,7 @@ public sealed class HtmlExporter
         {
             FieldVerticalAlign.Middle => "center",
             FieldVerticalAlign.Bottom => "flex-end",
-            _                         => "flex-start",
+            _ => "flex-start",
         };
         style.Append($"display:flex;flex-direction:column;justify-content:{vAlign};");
 
@@ -123,8 +126,8 @@ public sealed class HtmlExporter
         style.Append(el.Alignment switch
         {
             FieldAlignment.Center => "text-align:center;",
-            FieldAlignment.Right  => "text-align:right;",
-            _                     => "text-align:left;",
+            FieldAlignment.Right => "text-align:right;",
+            _ => "text-align:left;",
         });
 
         sb.Append($"<div class=\"rd-field\" style=\"{style}\">");
@@ -153,17 +156,150 @@ public sealed class HtmlExporter
 
     private static void RenderEllipse(StringBuilder sb, RenderedEllipseElement el, float scale)
     {
-        float w  = el.Width  * scale;
-        float h  = el.Height * scale;
+        float w = el.Width * scale;
+        float h = el.Height * scale;
         float sw = el.StrokeWidth * scale;
-        var rot  = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
+        var rot = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
         sb.AppendLine("<svg class=\"rd-line\" style=\"" +
                       $"left:{el.X * scale:F1}px;top:{el.Y * scale:F1}px;" +
                       $"width:{w:F1}px;height:{h:F1}px;overflow:visible;{rot}\">");
-        sb.AppendLine($"<ellipse cx=\"{w/2:F1}\" cy=\"{h/2:F1}\" " +
-                      $"rx=\"{Math.Max(0, w/2 - sw/2):F1}\" ry=\"{Math.Max(0, h/2 - sw/2):F1}\" " +
+        sb.AppendLine($"<ellipse cx=\"{w / 2:F1}\" cy=\"{h / 2:F1}\" " +
+                      $"rx=\"{Math.Max(0, w / 2 - sw / 2):F1}\" ry=\"{Math.Max(0, h / 2 - sw / 2):F1}\" " +
                       $"fill=\"{el.FillColor ?? "none"}\" " +
                       $"stroke=\"{el.StrokeColor ?? "#000000"}\" stroke-width=\"{sw:F1}\"/>");
+        sb.AppendLine("</svg>");
+    }
+
+    private static void RenderChart(StringBuilder sb, RenderedChartElement el, float scale)
+    {
+        float w = el.Width * scale, h = el.Height * scale;
+        float pad = 8f * scale;
+        var rot = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
+
+        sb.AppendLine($"<svg style=\"position:absolute;left:{el.X * scale:F1}px;top:{el.Y * scale:F1}px;" +
+                      $"width:{w:F1}px;height:{h:F1}px;{rot}\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        if (!string.IsNullOrWhiteSpace(el.BackgroundColor))
+            sb.AppendLine($"<rect x=\"0\" y=\"0\" width=\"{w:F1}\" height=\"{h:F1}\" fill=\"{el.BackgroundColor}\"/>");
+        if (el.ShowBorder)
+            sb.AppendLine($"<rect x=\".5\" y=\".5\" width=\"{w - 1:F1}\" height=\"{h - 1:F1}\" fill=\"none\" stroke=\"{el.BorderColor}\" stroke-width=\"{el.BorderWidth * scale:F1}\"/>");
+
+        float topY = pad;
+        if (!string.IsNullOrWhiteSpace(el.Title))
+        {
+            sb.AppendLine($"<text x=\"{w / 2:F1}\" y=\"{topY + 10:F1}\" text-anchor=\"middle\" font-size=\"{10 * scale:F1}\" font-weight=\"bold\" fill=\"#333\">{EscapeHtml(el.Title)}</text>");
+            topY += 16 * scale;
+        }
+
+        float legH = (el.ShowLegend && el.Series.Count > 0) ? 14 * scale : 0;
+        float chartH = h - topY - pad - legH;
+        float chartW = w - pad * 2;
+
+        var colors = new[] { "#4472C4", "#ED7D31", "#A9D18E", "#FF0000", "#FFC000", "#5B9BD5", "#70AD47", "#7030A0" };
+
+        switch (el.ChartType.ToLowerInvariant())
+        {
+            case "pie":
+                {
+                    int count = Math.Max(1, el.Series.Count > 0 ? el.Series.Count : el.Categories.Count);
+                    float cx = w / 2f, cy = topY + chartH / 2f, r = Math.Min(chartW, chartH) / 2f - 4;
+                    double angle = -Math.PI / 2;
+                    double step = 2 * Math.PI / count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var s = i < el.Series.Count ? el.Series[i] : null;
+                        var col = s?.Color ?? colors[i % colors.Length];
+                        double a1 = angle, a2 = angle + step;
+                        float x1 = cx + r * (float)Math.Cos(a1), y1 = cy + r * (float)Math.Sin(a1);
+                        float x2 = cx + r * (float)Math.Cos(a2), y2 = cy + r * (float)Math.Sin(a2);
+                        int lg = step > Math.PI ? 1 : 0;
+                        sb.AppendLine($"<path d=\"M{cx:F1},{cy:F1} L{x1:F1},{y1:F1} A{r:F1},{r:F1} 0 {lg} 1 {x2:F1},{y2:F1} Z\" fill=\"{col}\" stroke=\"white\" stroke-width=\"1\"/>");
+                        angle = a2;
+                    }
+                    break;
+                }
+            case "bar":
+            case "barhorizontal":
+                {
+                    bool horiz = el.ChartType.ToLowerInvariant() == "barhorizontal";
+                    int count = Math.Max(1, el.Series.Count);
+                    float maxV = 1f;
+                    foreach (var s in el.Series) if (s.Values.Count > 0) maxV = (float)Math.Max(maxV, s.Values.Max());
+
+                    if (horiz) sb.AppendLine($"<line x1=\"{pad:F1}\" y1=\"{topY:F1}\" x2=\"{pad:F1}\" y2=\"{topY + chartH:F1}\" stroke=\"#ccc\" stroke-width=\"0.5\"/>");
+                    else sb.AppendLine($"<line x1=\"{pad:F1}\" y1=\"{topY + chartH:F1}\" x2=\"{pad + chartW:F1}\" y2=\"{topY + chartH:F1}\" stroke=\"#ccc\" stroke-width=\"0.5\"/>");
+
+                    float groupW = horiz ? chartH / count : chartW / Math.Max(1, el.Series.FirstOrDefault()?.Values.Count ?? 1);
+                    float barW = Math.Max(4, groupW * 0.7f);
+
+                    for (int si = 0; si < el.Series.Count; si++)
+                    {
+                        var s = el.Series[si];
+                        var col = s.Color ?? colors[si % colors.Length];
+                        for (int vi = 0; vi < s.Values.Count; vi++)
+                        {
+                            float frac = (float)(s.Values[vi] / maxV);
+                            if (horiz)
+                            {
+                                float by = topY + si * groupW + (groupW - barW) / 2;
+                                float bw = chartW * frac;
+                                sb.AppendLine($"<rect x=\"{pad:F1}\" y=\"{by:F1}\" width=\"{bw:F1}\" height=\"{barW:F1}\" fill=\"{col}\"/>");
+                            }
+                            else
+                            {
+                                float bx = pad + vi * groupW + si * (groupW / Math.Max(1, el.Series.Count));
+                                float bh = chartH * frac;
+                                float bw = groupW / Math.Max(1, el.Series.Count) * 0.8f;
+                                sb.AppendLine($"<rect x=\"{bx:F1}\" y=\"{topY + chartH - bh:F1}\" width=\"{bw:F1}\" height=\"{bh:F1}\" fill=\"{col}\"/>");
+                            }
+                        }
+                    }
+                    break;
+                }
+            case "line":
+                {
+                    sb.AppendLine($"<line x1=\"{pad:F1}\" y1=\"{topY + chartH:F1}\" x2=\"{pad + chartW:F1}\" y2=\"{topY + chartH:F1}\" stroke=\"#ccc\" stroke-width=\"0.5\"/>");
+                    float maxV = 1f;
+                    foreach (var s in el.Series) if (s.Values.Count > 0) maxV = (float)Math.Max(maxV, s.Values.Max());
+
+                    for (int si = 0; si < el.Series.Count; si++)
+                    {
+                        var s = el.Series[si];
+                        var col = s.Color ?? colors[si % colors.Length];
+                        int cnt = s.Values.Count;
+                        if (cnt < 2) continue;
+                        var pts = string.Join(" ", s.Values.Select((v, i) =>
+                        {
+                            float x = pad + (float)i / (cnt - 1) * chartW;
+                            float y = topY + chartH - (float)(v / maxV) * chartH;
+                            return $"{x:F1},{y:F1}";
+                        }));
+                        sb.AppendLine($"<polyline points=\"{pts}\" fill=\"none\" stroke=\"{col}\" stroke-width=\"{2 * scale:F1}\"/>");
+                        for (int i = 0; i < cnt; i++)
+                        {
+                            float x = pad + (float)i / (cnt - 1) * chartW;
+                            float y = topY + chartH - (float)(s.Values[i] / maxV) * chartH;
+                            sb.AppendLine($"<circle cx=\"{x:F1}\" cy=\"{y:F1}\" r=\"{2.5f * scale:F1}\" fill=\"{col}\"/>");
+                        }
+                    }
+                    break;
+                }
+        }
+
+        // Legend
+        if (el.ShowLegend && el.Series.Count > 0)
+        {
+            float lx = pad, ly = h - legH + 2;
+            foreach (var (s, i) in el.Series.Select((s, i) => (s, i)))
+            {
+                var col = s.Color ?? colors[i % colors.Length];
+                sb.AppendLine($"<rect x=\"{lx:F1}\" y=\"{ly:F1}\" width=\"{8 * scale:F1}\" height=\"{8 * scale:F1}\" fill=\"{col}\"/>");
+                sb.AppendLine($"<text x=\"{lx + 10 * scale:F1}\" y=\"{ly + 8 * scale:F1}\" font-size=\"{8 * scale:F1}\" fill=\"#333\">{EscapeHtml(s.Label)}</text>");
+                lx += Math.Max(35 * scale, s.Label.Length * 5 * scale + 14 * scale);
+                if (lx > w - 30) break;
+            }
+        }
+
         sb.AppendLine("</svg>");
     }
 
@@ -172,9 +308,9 @@ public sealed class HtmlExporter
         var objFit = el.Stretch switch
         {
             "cover" => "cover",
-            "fill"  => "fill",
-            "none"  => "none",
-            _       => "contain",
+            "fill" => "fill",
+            "none" => "none",
+            _ => "contain",
         };
         var rot = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
         sb.AppendLine($"<img class=\"rd-rect\" style=\"" +
@@ -185,17 +321,17 @@ public sealed class HtmlExporter
 
     private static void RenderLine(StringBuilder sb, RenderedLineElement el, float scale)
     {
-        float left   = Math.Min(el.X,  el.X2)  * scale;
-        float top    = Math.Min(el.Y,  el.Y2)  * scale;
-        float width  = Math.Abs(el.X2 - el.X)  * scale;
-        float height = Math.Abs(el.Y2 - el.Y)  * scale;
-        float svgW   = Math.Max(width,  el.StrokeWidth * scale + 2);
-        float svgH   = Math.Max(height, el.StrokeWidth * scale + 2);
-        float x1r    = (el.X  * scale) - left;
-        float y1r    = (el.Y  * scale) - top;
-        float x2r    = (el.X2 * scale) - left;
-        float y2r    = (el.Y2 * scale) - top;
-        var rot      = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
+        float left = Math.Min(el.X, el.X2) * scale;
+        float top = Math.Min(el.Y, el.Y2) * scale;
+        float width = Math.Abs(el.X2 - el.X) * scale;
+        float height = Math.Abs(el.Y2 - el.Y) * scale;
+        float svgW = Math.Max(width, el.StrokeWidth * scale + 2);
+        float svgH = Math.Max(height, el.StrokeWidth * scale + 2);
+        float x1r = (el.X * scale) - left;
+        float y1r = (el.Y * scale) - top;
+        float x2r = (el.X2 * scale) - left;
+        float y2r = (el.Y2 * scale) - top;
+        var rot = el.Rotation != 0f ? $"transform:rotate({el.Rotation:F1}deg);transform-origin:center center;" : "";
         sb.AppendLine($"<svg class=\"rd-line\" style=\"" +
                       $"left:{left:F1}px;top:{top:F1}px;" +
                       $"width:{svgW:F1}px;height:{svgH:F1}px;{rot}\">");

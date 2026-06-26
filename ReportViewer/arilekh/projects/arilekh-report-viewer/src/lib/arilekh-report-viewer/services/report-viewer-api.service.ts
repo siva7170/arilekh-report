@@ -34,8 +34,14 @@ export interface StyleDto {
   paddingRight: number;
 }
 
+export interface ChartSeriesDto {
+  label: string;
+  color: string;
+  values: number[];
+}
+
 export interface ElementDto {
-  type: 'text' | 'rect' | 'line' | 'ellipse' | 'image';
+  type: 'text' | 'rect' | 'line' | 'ellipse' | 'image' | 'chart';
   x: number; y: number;
   width: number; height: number;
   rotation: number;
@@ -55,6 +61,17 @@ export interface ElementDto {
   // image
   src?: string;
   stretch?: string;
+  // chart
+  chartType?: 'pie' | 'bar' | 'barhorizontal' | 'line';
+  chartTitle?: string;
+  showLegend?: boolean;
+  showLabels?: boolean;
+  showBorder?: boolean;
+  borderColor?: string;
+  borderWidth?: number;
+  backgroundColor?: string;
+  series?: ChartSeriesDto[];
+  categories?: string[];
 }
 
 export interface PageResponse {
@@ -102,11 +119,13 @@ export class ReportViewerApiService {
   private _error    = new BehaviorSubject<string | null>(null);
   private _pageCache = new Map<number, PageResponse>();
   private _navigateTo$ = new Subject<number>();
+  private _empty  = new BehaviorSubject<boolean>(false);
 
   readonly session$    = this._session.asObservable();
   readonly loading$    = this._loading.asObservable();
   readonly error$      = this._error.asObservable();
   readonly navigateTo$ = this._navigateTo$.asObservable();
+  readonly empty$ = this._empty.asObservable();
 
   private provider!: IReportViewer;
 
@@ -321,6 +340,22 @@ export class ReportViewerApiService {
 
   clearCache(): void {
     this._pageCache.clear();
+  }
+
+  resetEmpty(){
+    this._empty.next(false);
+  }
+
+  empty(){
+    this._loading.next(false);
+    this._error.next(null);
+    this._pageCache.clear();
+    this._session.next(null);
+    this._empty.next(true);
+    let that=this;
+    setTimeout(()=>{
+      that._empty.next(true);
+    },500);
   }
 
   isPageCached(pageNumber: number): boolean {

@@ -21,13 +21,13 @@ Arilekh Report Core is the foundational .NET library of the Arilekh Reporting Pl
 Through .NET CLI
 
 ```
-dotnet add package ArilekhReport.Core --version 1.0.0
+dotnet add package ArilekhReport.Core --version 1.0.1
 ```
 
 PMC
 
 ```
-NuGet\Install-Package ArilekhReport.Core -Version 1.0.0
+NuGet\Install-Package ArilekhReport.Core -Version 1.0.1
 ```
 
 
