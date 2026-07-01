@@ -105,6 +105,10 @@ public class DragState
     // Original positions of ALL selected fields at drag start (for multi-select move)
     public Dictionary<FieldElement, (float X, float Y)> OrigPositions { get; } = new();
 
+    // Explorer drag-drop data
+    public string? ExplorerDragSectionName { get; set; }
+    public string? ExplorerDragFieldName { get; set; }
+
     // Which resize handle is active (Right = width only, Bottom = height only)
     public ResizeHandle ActiveHandle { get; set; } = ResizeHandle.None;
 
@@ -123,6 +127,8 @@ public class DragState
         DragStartClientX = DragStartClientY = 0;
         OrigPositions.Clear();
         ActiveHandle = ResizeHandle.None;
+        ExplorerDragSectionName = null;
+        ExplorerDragFieldName = null;
     }
 }
 

@@ -29,6 +29,16 @@ public sealed class RenderContext
     /// <summary>Zero-based row index within <see cref="CurrentTable"/>.</summary>
     public int RowIndex { get; set; } = -1;
 
+    /// <summary>
+    /// Resolved values for <see cref="DataSourceKind.ScalarField"/> data sources,
+    /// keyed by data-source name (case-insensitive).
+    /// Populated by the layout engine before rendering begins and injected into
+    /// every expression as <c>Fields.&lt;name&gt;</c> so that scalar sources
+    /// are accessible from any band — not just the Detail row.
+    /// </summary>
+    public Dictionary<string, object?> ScalarValues { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // ── Group tracking ────────────────────────────────────────────────────────
 
     /// <summary>

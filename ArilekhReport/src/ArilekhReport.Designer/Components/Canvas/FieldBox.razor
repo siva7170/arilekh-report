@@ -157,12 +157,13 @@
     {
         get
         {
-            var s = Field.Style;
+                var s = Field.Style;
             var sb = new System.Text.StringBuilder();
             sb.Append($"left:{(Field.X * Scale).ToString("F1")}px;");
             sb.Append($"top:{(Field.Y * Scale).ToString("F1")}px;");
             sb.Append($"width:{(Field.Width * Scale).ToString("F1")}px;");
             sb.Append($"height:{(Field.Height * Scale).ToString("F1")}px;");
+            sb.Append($"z-index:{(IsSelected || IsMultiSelected ? 10000 : 1 + Field.ZIndex)};");
             if (Field.Rotation != 0f)
                 sb.Append($"transform:rotate({Field.Rotation.ToString("F1")}deg);transform-origin:center center;");
             if (Field.Kind == ElementKind.Field || Field.Kind == ElementKind.Image)

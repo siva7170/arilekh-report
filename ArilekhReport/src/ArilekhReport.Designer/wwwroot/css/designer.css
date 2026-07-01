@@ -318,7 +318,6 @@ body {
 .rd-field-box--selected {
     border: 1px solid var(--rd-accent) !important;
     box-shadow: 0 0 0 2px rgba(91,142,240,0.3);
-    z-index: 6;
 }
 
 .rd-field-box__text {
@@ -898,6 +897,25 @@ body {
 }
 .rd-align-cell:hover { background: var(--rd-border); color: var(--rd-text-strong); }
 .rd-align-cell.active { background: var(--rd-accent); color: #fff; border-color: var(--rd-accent); }
+
+/* ── Explorer drag-and-drop ──────────────────────────────────── */
+.rd-explorer__drag-handle {
+    font-size: 10px; color: var(--rd-text-muted);
+    cursor: grab; flex-shrink: 0; min-width: 12px; text-align: center;
+    user-select: none;
+}
+.rd-explorer__row--field:active .rd-explorer__drag-handle { cursor: grabbing; }
+
+/* Drop position indicators */
+.rd-explorer__row--drop-above {
+    border-top: 2px solid var(--rd-accent) !important;
+}
+.rd-explorer__row--drop-below {
+    border-bottom: 2px solid var(--rd-accent) !important;
+}
+.rd-explorer__section--drag-over > .rd-explorer__row--section {
+    background: rgba(91,142,240,0.2);
+}
 
 /* ── Explorer folder / group styles ────────────────────────────── */
 .rd-explorer__row--group {

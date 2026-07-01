@@ -249,6 +249,7 @@ public sealed class DesignerStateService
     public FieldElement AddField(SectionDefinition section, float x, float y,
                                   string? fieldName = null, string? expression = null)
     {
+        int maxZ = section.Fields.Count > 0 ? section.Fields.Max(f => f.ZIndex) : 0;
         var field = new FieldElement
         {
             Name       = fieldName ?? $"field_{Guid.NewGuid().ToString("N")[..8]}",
@@ -257,6 +258,7 @@ public sealed class DesignerStateService
             Width      = 100f,
             Height     = 14f,
             Expression = expression ?? (fieldName is not null ? $"Fields.{fieldName}" : null),
+            ZIndex     = maxZ + 1,
         };
 
         section.Fields.Add(field);
@@ -270,6 +272,7 @@ public sealed class DesignerStateService
         // Default sizes and stroke per shape kind
         float w = kind == ElementKind.Line ? 72f : 60f;
         float h = kind == ElementKind.Line ? 0f  : 60f;
+        int maxZ = section.Fields.Count > 0 ? section.Fields.Max(f => f.ZIndex) : 0;
 
         var field = new FieldElement
         {
@@ -282,6 +285,7 @@ public sealed class DesignerStateService
             StrokeColor = "#000000",
             StrokeWidth = 1f,
             FillColor   = null,   // transparent by default
+            ZIndex      = maxZ + 1,
         };
 
         section.Fields.Add(field);
@@ -297,6 +301,55 @@ public sealed class DesignerStateService
         NotifyChanged();
     }
 
+    /// <summary>
+    /// Move a field to a specific index position within its section's field list,
+    /// then normalize ZIndex values to match list order.
+    /// </summary>
+    public void ReorderFieldInSection(SectionDefinition section, FieldElement field, int newIndex)
+    {
+        int oldIndex = section.Fields.IndexOf(field);
+        if (oldIndex < 0 || oldIndex == newIndex) return;
+
+        section.Fields.RemoveAt(oldIndex);
+        if (newIndex > oldIndex) newIndex--;
+        section.Fields.Insert(newIndex, field);
+
+        // Normalize z-index to match list order (lower = further back)
+        for (int i = 0; i < section.Fields.Count; i++)
+            section.Fields[i].ZIndex = i;
+
+        NotifyChanged();
+    }
+
+    /// <summary>Move a field from one section to another, adding it at the end.</summary>
+    public void MoveFieldToSection(FieldElement field, SectionDefinition fromSection, SectionDefinition toSection)
+    {
+        fromSection.Fields.Remove(field);
+        toSection.Fields.Add(field);
+        NormalizeZIndices(fromSection);
+        NormalizeZIndices(toSection);
+        Selection.Select(toSection, field);
+        NotifyChanged();
+    }
+
+    /// <summary>Move a field between sections and insert at the given index position.</summary>
+    public void MoveFieldToSectionAt(FieldElement field, SectionDefinition fromSection, SectionDefinition toSection, int insertIndex)
+    {
+        fromSection.Fields.Remove(field);
+        int idx = Math.Clamp(insertIndex, 0, toSection.Fields.Count);
+        toSection.Fields.Insert(idx, field);
+        NormalizeZIndices(fromSection);
+        NormalizeZIndices(toSection);
+        Selection.Select(toSection, field);
+        NotifyChanged();
+    }
+
+    private void NormalizeZIndices(SectionDefinition section)
+    {
+        for (int i = 0; i < section.Fields.Count; i++)
+            section.Fields[i].ZIndex = i;
+    }
+
     public void MoveField(SectionDefinition section, FieldElement field, float newX, float newY)
     {
         field.X = Math.Max(0f, Snap(newX));
@@ -308,6 +361,55 @@ public sealed class DesignerStateService
     {
         field.Width  = Math.Max(10f, Snap(newWidth));
         field.Height = Math.Max(8f,  Snap(newHeight));
+        NotifyChanged();
+    }
+
+    // ── Layer / z-index operations ──────────────────────────────────
+
+    /// <summary>Move field one layer forward (higher z-index).</summary>
+    public void BringForward(SectionDefinition section, FieldElement field)
+    {
+        var ordered = section.Fields.OrderBy(f => f.ZIndex).ToList();
+        int idx = ordered.IndexOf(field);
+        if (idx < ordered.Count - 1)
+        {
+            int temp = field.ZIndex;
+            field.ZIndex = ordered[idx + 1].ZIndex;
+            ordered[idx + 1].ZIndex = temp;
+            NotifyChanged();
+        }
+    }
+
+    /// <summary>Move field one layer backward (lower z-index).</summary>
+    public void SendBackward(SectionDefinition section, FieldElement field)
+    {
+        var ordered = section.Fields.OrderBy(f => f.ZIndex).ToList();
+        int idx = ordered.IndexOf(field);
+        if (idx > 0)
+        {
+            int temp = field.ZIndex;
+            field.ZIndex = ordered[idx - 1].ZIndex;
+            ordered[idx - 1].ZIndex = temp;
+            NotifyChanged();
+        }
+    }
+
+    /// <summary>Bring field to the very front (highest z-index).</summary>
+    public void BringToFront(SectionDefinition section, FieldElement field)
+    {
+        int maxZ = section.Fields.Count > 0 ? section.Fields.Max(f => f.ZIndex) : 0;
+        field.ZIndex = maxZ + 1;
+        NotifyChanged();
+    }
+
+    /// <summary>Send field to the very back (lowest z-index), shifting others up.</summary>
+    public void SendToBack(SectionDefinition section, FieldElement field)
+    {
+        int minZ = section.Fields.Count > 0 ? section.Fields.Min(f => f.ZIndex) : 0;
+        // Shift all other fields' z-index up by 1 to make room
+        foreach (var f in section.Fields.Where(f => f != field))
+            f.ZIndex = (f.ZIndex > minZ ? f.ZIndex : minZ) + 1;
+        field.ZIndex = minZ;
         NotifyChanged();
     }
 
@@ -384,6 +486,7 @@ public sealed class DesignerStateService
 
     public FieldElement AddChartElement(SectionDefinition section, float x, float y, ChartType chartType)
     {
+        int maxZ = section.Fields.Count > 0 ? section.Fields.Max(f => f.ZIndex) : 0;
         var field = new FieldElement
         {
             Name   = $"chart_{Guid.NewGuid().ToString("N")[..8]}",
@@ -392,6 +495,7 @@ public sealed class DesignerStateService
             Width  = 200f,
             Height = 120f,
             Kind   = ElementKind.Chart,
+            ZIndex = maxZ + 1,
             Chart  = new ChartDefinition
             {
                 Type       = chartType,
@@ -412,6 +516,7 @@ public sealed class DesignerStateService
 
     public FieldElement AddCustomFieldElement(SectionDefinition section, float x, float y)
     {
+        int maxZ = section.Fields.Count > 0 ? section.Fields.Max(f => f.ZIndex) : 0;
         var field = new FieldElement
         {
             Name          = $"custom_{Guid.NewGuid().ToString("N")[..8]}",
@@ -420,6 +525,7 @@ public sealed class DesignerStateService
             Width         = 100f,
             Height        = 14f,
             Kind          = ElementKind.CustomFormula,
+            ZIndex        = maxZ + 1,
             CustomFormula = new CustomFieldDefinition { Formula = "" }
         };
         section.Fields.Add(field);

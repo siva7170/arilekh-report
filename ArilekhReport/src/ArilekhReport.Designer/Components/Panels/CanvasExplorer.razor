@@ -11,11 +11,15 @@
     {
         var secExpanded = _expanded.Contains(section.Name);
 
-        <div class="rd-explorer__section">
+        <div class="rd-explorer__section @(_dragOverSection == section.Name ? "rd-explorer__section--drag-over" : "")">
             <!-- Section row -->
             <div class="rd-explorer__row rd-explorer__row--section
-                        @(State.Selection.Section == section && !State.Selection.HasField ? "rd-explorer__row--selected" : "")"
-                 @onclick="() => SelectSection(section)">
+                        @(State.Selection.Section == section && !State.Selection.HasField ? "rd-explorer__row--selected" : "")
+                        @(_dragOverSection == section.Name ? "rd-explorer__row--drop-below" : "")"
+                 @onclick="() => SelectSection(section)"
+                 @ondragover="e => OnSectionDragOver(e, section)" @ondragover:preventDefault="true"
+                 @ondrop="e => OnSectionDrop(e, section)" @ondrop:stopPropagation="true"
+                 @ondragleave="() => OnSectionDragLeave(section)">
                 <button class="rd-explorer__toggle"
                         @onclick:stopPropagation="true"
                         @onclick="() => ToggleSection(section.Name)">
@@ -91,6 +95,7 @@
 @code {
     private readonly HashSet<string> _expanded = new();
     private string _newGroupName = string.Empty;
+    private string? _dragOverSection;
 
     private void ToggleSection(string key)
     {
@@ -119,6 +124,47 @@
         _newGroupName = string.Empty;
         // Notify so any selected field can be assigned
         State.NotifyChanged();
+    }
+
+    // ── Section drag-drop (accept fields dropped onto a section row) ──
+
+    private void OnSectionDragOver(DragEventArgs e, SectionDefinition section)
+    {
+        e.DataTransfer.DropEffect = "move";
+        _dragOverSection = section.Name;
+    }
+
+    private void OnSectionDragLeave(SectionDefinition section)
+    {
+        if (_dragOverSection == section.Name)
+            _dragOverSection = null;
+    }
+
+    private void OnSectionDrop(DragEventArgs e, SectionDefinition section)
+    {
+        _dragOverSection = null;
+        string? srcSectionName = State.Drag.ExplorerDragSectionName;
+        string? srcFieldName = State.Drag.ExplorerDragFieldName;
+        if (srcSectionName is null || srcFieldName is null) return;
+
+        // Find source field and section
+        var srcSection = State.Report.Sections.FirstOrDefault(s => s.Name == srcSectionName);
+        if (srcSection is null) return;
+        var srcField = srcSection.Fields.FirstOrDefault(f => f.Name == srcFieldName);
+        if (srcField is null) return;
+
+        if (srcSection == section)
+        {
+                // Same section - move field to end (top layer)
+                State.ReorderFieldInSection(section, srcField, section.Fields.Count);
+        }
+        else
+        {
+            // Different section - move field
+            UndoRedo.Push("Move field to section");
+            State.MoveFieldToSection(srcField, srcSection, section);
+        }
+        StateHasChanged();
     }
 
     private static string SectionIcon(SectionType t) => t switch

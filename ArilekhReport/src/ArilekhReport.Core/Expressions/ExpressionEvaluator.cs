@@ -327,7 +327,12 @@ public sealed class ExpressionEvaluator
 
     private static void RegisterParameters(NCalc.Expression e, RenderContext ctx)
     {
-        // Fields.* from current row
+        // Fields.* from ScalarField data sources (registered first so that a
+        // same-named row column can override if needed — last write wins).
+        foreach (var (name, val) in ctx.ScalarValues)
+            e.Parameters[$"Fields.{name}"] = val;
+
+        // Fields.* from current row (overrides scalar if column names collide)
         if (ctx.CurrentRow is not null)
         {
             foreach (System.Data.DataColumn col in ctx.CurrentRow.Table.Columns)

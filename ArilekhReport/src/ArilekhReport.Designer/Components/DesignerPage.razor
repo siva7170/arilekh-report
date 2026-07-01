@@ -73,6 +73,11 @@
                 </div>
                 <div class="rd-context-menu__item" @onclick="CtxDuplicate">⧉ Duplicate</div>
                 <div class="rd-context-menu__sep"></div>
+                <div class="rd-context-menu__item" @onclick="CtxBringForward">⬆ Bring Forward</div>
+                <div class="rd-context-menu__item" @onclick="CtxSendBackward">⬇ Send Backward</div>
+                <div class="rd-context-menu__item" @onclick="CtxBringToFront">⬆⬆ Bring to Front</div>
+                <div class="rd-context-menu__item" @onclick="CtxSendToBack">⬇⬇ Send to Back</div>
+                <div class="rd-context-menu__sep"></div>
                 <div class="rd-context-menu__item rd-context-menu__item--danger"
                      @onclick="CtxDelete">🗑 Delete</div>
             }
@@ -244,6 +249,46 @@
         if (s is null || f is null) return;
         UndoRedo.Push("Delete field");
         State.DeleteField(s, f);
+        State.HideContextMenu();
+    }
+
+    private void CtxBringForward()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        UndoRedo.Push("Bring forward");
+        State.BringForward(s, f);
+        State.HideContextMenu();
+    }
+
+    private void CtxSendBackward()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        UndoRedo.Push("Send backward");
+        State.SendBackward(s, f);
+        State.HideContextMenu();
+    }
+
+    private void CtxBringToFront()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        UndoRedo.Push("Bring to front");
+        State.BringToFront(s, f);
+        State.HideContextMenu();
+    }
+
+    private void CtxSendToBack()
+    {
+        var s = State.ContextMenu.Section;
+        var f = State.ContextMenu.Field;
+        if (s is null || f is null) return;
+        UndoRedo.Push("Send to back");
+        State.SendToBack(s, f);
         State.HideContextMenu();
     }
 

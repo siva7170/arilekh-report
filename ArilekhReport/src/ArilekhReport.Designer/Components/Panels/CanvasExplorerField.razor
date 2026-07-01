@@ -1,8 +1,17 @@
 @inject DesignerStateService State
+@inject UndoRedoService UndoRedo
 
-<div class="rd-explorer__row rd-explorer__row--field @(IsSelected ? "rd-explorer__row--selected" : "")"
+<div class="rd-explorer__row rd-explorer__row--field @(IsSelected ? "rd-explorer__row--selected" : "") @(_dropIndicator)"
+     draggable="true"
      style="padding-left:@(Indent * 10 + 6)px"
-     @onclick="OnClickField">
+     @onclick="OnClickField"
+     @ondragstart="OnDragStart"
+     @ondragenter="OnDragEnter"
+     @ondragover="OnDragOver" @ondragover:preventDefault="true"
+     @ondragleave="OnDragLeave"
+     @ondrop="OnDrop" @ondrop:stopPropagation="true"
+     @ondragend="OnDragEnd">
+    <span class="rd-explorer__drag-handle">⠿</span>
     <span class="rd-explorer__field-icon">@FieldIcon(Field)</span>
     <span class="rd-explorer__label" title="@Field.Name">@FieldLabel(Field)</span>
     @if (!string.IsNullOrEmpty(Field.GroupName))
@@ -62,6 +71,82 @@
                   .Select(f => f.GroupName!)
                   .Distinct()
                   .OrderBy(g => g);
+
+    // ── Drag & Drop ─────────────────────────────────────────────────
+
+    private string _dropIndicator => _isDragOver ? (_dragAbove ? "rd-explorer__row--drop-above" : "rd-explorer__row--drop-below") : "";
+    private bool _isDragOver;
+    private bool _dragAbove;
+
+    private void OnDragStart(DragEventArgs e)
+    {
+        State.Drag.ExplorerDragSectionName = Section.Name;
+        State.Drag.ExplorerDragFieldName = Field.Name;
+    }
+
+    private void OnDragEnter(DragEventArgs e)
+    {
+        _isDragOver = true;
+        UpdateDropIndicator(e);
+    }
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        e.DataTransfer.DropEffect = "move";
+        UpdateDropIndicator(e);
+    }
+
+    private void OnDragLeave(DragEventArgs e)
+    {
+        _isDragOver = false;
+    }
+
+    private void UpdateDropIndicator(DragEventArgs e)
+    {
+        _dragAbove = e.OffsetY <= 12;
+    }
+
+    private void OnDrop(DragEventArgs e)
+    {
+        _isDragOver = false;
+        string? srcSectionName = State.Drag.ExplorerDragSectionName;
+        string? srcFieldName = State.Drag.ExplorerDragFieldName;
+        if (srcSectionName is null || srcFieldName is null) return;
+
+        // Don't drop on self
+        if (srcSectionName == Section.Name && srcFieldName == Field.Name) return;
+
+        // Find source field and section
+        var srcSection = State.Report.Sections.FirstOrDefault(s => s.Name == srcSectionName);
+        if (srcSection is null) return;
+        var srcField = srcSection.Fields.FirstOrDefault(f => f.Name == srcFieldName);
+        if (srcField is null) return;
+
+        // Determine drop position: above (insert before) or below (insert after) the target field
+        int dropIndex = Section.Fields.IndexOf(Field);
+        if (!_dragAbove)
+            dropIndex++;
+
+        if (srcSection == Section)
+        {
+            // Same section - reorder
+            State.ReorderFieldInSection(Section, srcField, Math.Max(0, dropIndex));
+        }
+        else
+        {
+            // Different section - move field to target position
+            UndoRedo.Push("Move field to section");
+            State.MoveFieldToSectionAt(srcField, srcSection, Section, dropIndex);
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnDragEnd(DragEventArgs e)
+    {
+        State.Drag.ExplorerDragSectionName = null;
+        State.Drag.ExplorerDragFieldName = null;
+    }
 
     private static string FieldIcon(FieldElement f) => f.Kind switch
     {

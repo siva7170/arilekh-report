@@ -271,6 +271,25 @@
         }
     }
 
+    <!-- ── Layer / z-index ────────────────────────────────────────── -->
+    <div class="rd-props__group-title">Layer</div>
+
+    <PropRow Label="Z-Index">
+        <div style="display:flex;gap:4px;align-items:center;width:100%;">
+            <NumInput Value="@((float)Field.ZIndex)"
+                      ValueChanged="v => Change(() => Field.ZIndex = (int)v)"
+                      Step="1" Min="0" />
+            <button class="rd-btn rd-btn--xs" title="Bring Forward"
+                    @onclick="OnBringForward">⬆</button>
+            <button class="rd-btn rd-btn--xs" title="Send Backward"
+                    @onclick="OnSendBackward">⬇</button>
+            <button class="rd-btn rd-btn--xs" title="Bring to Front"
+                    @onclick="OnBringToFront">⏫</button>
+            <button class="rd-btn rd-btn--xs" title="Send to Back"
+                    @onclick="OnSendToBack">⏬</button>
+        </div>
+    </PropRow>
+
     <!-- ── Behaviour ─────────────────────────────────────────────── -->
     <div class="rd-props__group-title">Behaviour</div>
 
@@ -394,6 +413,30 @@
     {
         UndoRedo.Push("Delete field");
         State.DeleteField(Section, Field);
+    }
+
+    private void OnBringForward()
+    {
+        UndoRedo.Push("Bring forward");
+        State.BringForward(Section, Field);
+    }
+
+    private void OnSendBackward()
+    {
+        UndoRedo.Push("Send backward");
+        State.SendBackward(Section, Field);
+    }
+
+    private void OnBringToFront()
+    {
+        UndoRedo.Push("Bring to front");
+        State.BringToFront(Section, Field);
+    }
+
+    private void OnSendToBack()
+    {
+        UndoRedo.Push("Send to back");
+        State.SendToBack(Section, Field);
     }
 
     private static string AlignIcon3x3(FieldAlignment h, FieldVerticalAlign v)

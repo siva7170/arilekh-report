@@ -73,10 +73,35 @@ public sealed class LayoutEngine
         // 2. Page Header on page 1
         RenderPageHeader(doc, ctx, pageSetup, report);
 
-        // 3. Data
+        // 3a. Resolve ScalarField data sources up-front so their values are
+        //     available in every band (headers, footers, detail) via Fields.<name>.
+        foreach (var ds in report.DataSources.Where(d => d.Kind == DataSourceKind.ScalarField))
+        {
+            try
+            {
+                var scalarTable = await dataProvider.GetDataTableAsync(
+                    ds.Name, ctx.Parameters, cancellationToken);
+
+                // Convention: first row, first column holds the scalar value.
+                if (scalarTable.Rows.Count > 0 && scalarTable.Columns.Count > 0)
+                {
+                    var raw = scalarTable.Rows[0][0];
+                    ctx.ScalarValues[ds.Name] = raw == DBNull.Value ? null : raw;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[LayoutEngine] ScalarField '{ds.Name}' could not be resolved: {ex.Message}");
+            }
+        }
+
+        // 3b. Data — skip ScalarField sources when choosing the primary DataTable.
         var detailSections = report.GetSections(SectionType.Detail).ToList();
         var primaryDsName = detailSections.FirstOrDefault()?.DataSourceName
-                             ?? report.DataSources.FirstOrDefault()?.Name;
+                             ?? report.DataSources
+                                      .FirstOrDefault(d => d.Kind != DataSourceKind.ScalarField)
+                                      ?.Name;
 
         if (primaryDsName is not null)
         {
@@ -85,8 +110,6 @@ public sealed class LayoutEngine
 
             ctx.CurrentTable = table;
             RenderData(doc, ctx, pageSetup, report, table, detailSections, cancellationToken);
-            //await RenderDataAsync(doc, ctx, pageSetup, report, dataProvider,
-            //    table, detailSections, cancellationToken);
         }
 
         // 4. Report Footer

@@ -30,8 +30,8 @@
         position:absolute;inset:0;pointer-events:none;"></div>
     }
 
-    <!-- Field elements -->
-    @foreach (var field in Section.Fields)
+    <!-- Field elements (sorted by z-index, lower = further back) -->
+    @foreach (var field in Section.Fields.OrderBy(f => f.ZIndex))
     {
         <FieldBox Section="Section" Field="field" Scale="Scale" />
     }
@@ -140,13 +140,13 @@
               && drag.TargetField is not null
               && drag.TargetSection is not null)
         {
-            // e.ClientX/Y are viewport pixels. PtToPx = Zoom * 1.333 converts viewport px → points.
-            float ptToPx = State.PtToPx;
-            float clientDeltaXPt = ((float)e.ClientX - drag.DragStartClientX) / ptToPx;
-            float clientDeltaYPt = ((float)e.ClientY - drag.DragStartClientY) / ptToPx;
-
             if (drag.OrigPositions.Count > 1)
             {
+                // Multi-select: move all fields by the same delta
+                float ptToPx = State.PtToPx;
+                float clientDeltaXPt = ((float)e.ClientX - drag.DragStartClientX) / ptToPx;
+                float clientDeltaYPt = ((float)e.ClientY - drag.DragStartClientY) / ptToPx;
+
                 foreach (var (field, (origX, origY)) in drag.OrigPositions)
                 {
                     field.X = State.Snap(origX + clientDeltaXPt);
@@ -156,14 +156,26 @@
             }
             else
             {
+                // Single field move
                 if (drag.TargetSection != Section)
                 {
+                    // Cross-section move: use offset relative to target section
                     drag.TargetSection.Fields.Remove(drag.TargetField);
                     Section.Fields.Add(drag.TargetField);
+                    float newX = (float)e.OffsetX / Scale;
+                    float newY = (float)e.OffsetY / Scale;
+                    State.MoveField(Section, drag.TargetField, newX, newY);
                 }
-                float newX = drag.OrigX + clientDeltaXPt;
-                float newY = drag.OrigY + clientDeltaYPt;
-                State.MoveField(Section, drag.TargetField, newX, newY);
+                else
+                {
+                    // Within-section move: preserve delta from drag start
+                    float ptToPx = State.PtToPx;
+                    float clientDeltaXPt = ((float)e.ClientX - drag.DragStartClientX) / ptToPx;
+                    float clientDeltaYPt = ((float)e.ClientY - drag.DragStartClientY) / ptToPx;
+                    float newX = drag.OrigX + clientDeltaXPt;
+                    float newY = drag.OrigY + clientDeltaYPt;
+                    State.MoveField(Section, drag.TargetField, newX, newY);
+                }
             }
             drag.Reset();
         }

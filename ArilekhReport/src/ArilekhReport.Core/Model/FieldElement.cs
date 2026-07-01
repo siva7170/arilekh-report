@@ -275,8 +275,17 @@ public class FieldElement
     [XmlAttribute("groupName")]
     public string? GroupName { get; set; }
 
-    // ── Vertical alignment ───────────────────────────────────────────────────
+    // ── Layer / z-index ──────────────────────────────────────────────
+    
+    /// <summary>
+    /// Layer order within the parent section. Lower values are rendered behind
+    /// (further back); higher values are in front.
+    /// </summary>
+    [XmlAttribute("zIndex")]
+    public int ZIndex { get; set; }
 
+    // ── Vertical alignment ───────────────────────────────────────────────────
+    
     /// <summary>Vertical alignment of text/content within the field box.</summary>
     [XmlAttribute("verticalAlign")]
     public FieldVerticalAlign VerticalAlign { get; set; } = FieldVerticalAlign.Top;  // contain | cover | fill | none
