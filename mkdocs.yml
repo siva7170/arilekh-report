@@ -1,0 +1,23 @@
+site_name: Arilekh Report
+site_description: Modern .NET Reporting Engine
+site_author: Siva V
+
+repo_url: https://github.com/siva7170/arilekh-report
+repo_name: siva7170/arilekh-report
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Getting Started: getting-started.md
+  - Report Designer: report-designer.md
+  - Report Viewer: report-viewer.md
+  - Angular: angular.md
+  - ASP.NET Core: aspnet-core.md
+  - Expressions: expressions.md
+  - Charts: charts.md
+  - API Reference: api-reference.md
+  - Examples: examples.md
+  - FAQ: faq.md
