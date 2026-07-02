@@ -1,3 +1,0 @@
-# .NET Core
-
-Coming soon.

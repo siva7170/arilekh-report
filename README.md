@@ -2,6 +2,10 @@
 
 Arilekh Reporting Platform is a comprehensive reporting framework for .NET and Angular applications, providing report design, generation, rendering, viewing, and export capabilities for enterprise-grade business solutions.
 
+## Documentation
+
+We have updated the full documentation for Arilekh Report Engine on ReadTheDocs. Please refer [here](http://arilekh-report.readthedocs.io/) for detailed documentation
+
 ## Arilekh Report Core
 
 Arilekh Report Core is the foundational .NET library of the Arilekh Reporting Platform. It provides report definitions, layout processing, data binding, expression evaluation, parameter handling, rendering infrastructure, and export capabilities for generating enterprise-grade reports in desktop, web, cloud, and microservice applications.

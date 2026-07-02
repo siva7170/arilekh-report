@@ -10,12 +10,10 @@ theme:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
   - Getting Started: getting-started.md
   - Report Designer: report-designer.md
+  - Report Generation: report-generation.md
   - Report Viewer: report-viewer.md
-  - Angular: angular.md
-  - ASP.NET Core: aspnet-core.md
   - Expressions: expressions.md
   - Charts: charts.md
   - API Reference: api-reference.md
